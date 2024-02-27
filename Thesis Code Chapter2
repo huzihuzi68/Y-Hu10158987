@@ -384,40 +384,7 @@ repeat
   }
 }
 estimated_par
-
-
 colMeans(estimated_par)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -456,8 +423,6 @@ gar1=unigarch(totaltime=1200,
               w=0.04^2,c=0.254^2,d=0.941^2,nu=5)
 gar1=unigarch(totaltime=12000,
               w=0.003^2,c=0.332,d=0.864^2,nu=5)
-
-
 
 #head(gar1)   #        sigdata(volatility)     epsdata(data)
 totaltime=1200
@@ -516,12 +481,174 @@ garch_likelihood_constrained <- function(theta, tdata) {
   list(-nll)
 }
 
-# 进行GARCH(1,1)模型的参数估计
-#returns <- returns[-1]  # 去除第一个元素
-initial_guess <- c(0.001, 0.001, 0.001,8)  # 初始参数猜测值(初始值很重要)
-lower_bound <- c(0.001, 0.001, 0.001,3)           # 参数下限
+
+#returns <- returns[-1] 
+initial_guess <- c(0.001, 0.001, 0.001,8)  
+lower_bound <- c(0.001, 0.001, 0.001,3)          
 upper_bound <- c(1,1,1,Inf)  # 参数上限
 optim_result1 <- optim(initial_guess,garch_likelihood_constrained, tdata=sim.tagarch, method = "L-BFGS-B", lower = lower_bound, upper = upper_bound,hessian=TRUE)
 
 estimated_params1 <- optim_result1$par  # 估计的参数值
 estimated_params1
+
+
+# chapter 2
+data=read.csv(file="oil.csv")
+oil=data.frame(data)
+head(oil)
+WTI=oil[,2]
+Brent=oil[,3]
+summary(WTI)
+length(WTI)
+summary(Brent)
+
+#install.packages("moments")
+#install.packages("tseries")
+library(moments)
+library(tseries)
+skewness_value <- skewness(WTI)
+kurtosis_value <- kurtosis(WTI)
+jb_test <- jarque.bera.test(WTI)
+jb_statistic <- jb_test$statistic
+jb_p_value <- jb_test$p.value
+
+skewness_value <- skewness(Brent)
+kurtosis_value <- kurtosis(Brent)
+jb_test <- jarque.bera.test(Brent)
+jb_statistic <- jb_test$statistic
+jb_p_value <- jb_test$p.value
+
+adf_test <- adf.test(WTI, alternative = "stationary")
+adf_test <- adf.test(Brent, alternative = "stationary")
+
+
+
+par(mfrow=c(2,1))
+day=as.Date(oil$Date)
+plot(day,WTI,xaxt="n",type="l",
+     ylab="WTI",xlab="time")
+plot(day,Brent,xaxt="n",type="l",
+     ylab="Brent",xlab="time")
+axis.Date(1, at = seq(day[1], day[length(day)], by = "4 years"),
+          format = "%d-%m-%Y", las = 2)
+
+
+
+library(forecast)
+auto.arima(WTI)
+auto.arima(Brent)
+
+
+####residuals plot
+fit1=arima(WTI,order=c(0,0,0))
+fit2=arima(Brent,order=c(1,0,0))
+
+dat_arma<-cbind(residuals(fit1),residuals(fit2))
+mean(WTI)
+sum(WTI)
+var(dat_arma)
+cor(dat_arma)
+m <- apply(dat_arma, 2, mean)
+v <- apply(dat_arma, 2, var)
+#dat_arma_std <- t((t(dat_arma)-m)/sqrt(v))
+par(mfrow=c(2,1))
+plot(day[1:length(day)],dat_arma[,1],xaxt="n",type="l",
+     ylab="WTI residuals",xlab="time")
+plot(day[1:length(day)],dat_arma[,2],xaxt="n",type="l",
+     ylab="Brent residuals",xlab="time")
+axis.Date(1, at = seq(day[1], day[length(day)], by = "4 years"),
+          format = "%d-%m-%Y", las = 2)
+
+
+summary(dat_arma[,1])
+summary(dat_arma[,2])
+
+#install.packages("moments")
+#install.packages("tseries")
+
+skewness_value <- skewness(dat_arma[,1])
+kurtosis_value <- kurtosis(dat_arma[,1])
+jb_test <- jarque.bera.test(dat_arma[,1])
+
+
+skewness_value <- skewness(dat_arma[,2])
+kurtosis_value <- kurtosis(dat_arma[,2])
+jb_test <- jarque.bera.test(dat_arma[,2])
+
+
+#acf plots
+acf(dat_arma,lag.max = 10)
+squ.residual=dat_arma^2
+acf(squ.residual,lag.max = 10)
+
+
+#acf plots standerdized
+acf(dat_arma_std,lag.max = 10)
+squ.residual=dat_arma_std^2
+acf(squ.residual,lag.max = 10)
+
+#ARCH effect
+install.packages("aTSA")
+library(aTSA)
+mod <- arima(WTI,order = c(0,0,0))
+arch.test(mod)
+mod <- arima(Brent,order = c(1,0,0))
+arch.test(mod)
+
+
+#GARCH estimation
+#########update
+garch_likelihood_constrained <- function(theta, returns) {
+  omega <- theta[1]
+  alpha <- theta[2]
+  beta <- theta[3]
+  # Check if parameters are within acceptable range
+  if (omega > 0 || alpha > 0 || beta > 0 || 0< alpha + beta|| alpha + beta < 1) {
+    T <- length(returns)
+    sigma2 <- numeric(T)
+    sigma2[1] <- var(returns)
+    for (t in 2:T) {
+      sigma2[t] <- omega + alpha * returns[t-1]^2 + beta * sigma2[t-1]
+      if (sigma2[t] <= 0) {
+        return(.Machine$double.xmax)
+      }
+    }
+    log_likelihood <- -0.5 * (T * log(2 * pi) + sum(log(sigma2)) + sum(returns^2 / sigma2))
+  }
+  return(-log_likelihood) # Negative because 'optim' minimizes
+}
+
+
+
+summary(dat_arma[,1])
+summary(dat_arma[,2])
+
+#check (not good)
+library(rugarch)
+r.garch <- ugarchspec(mean.model = list(armaOrder = c(0,0),
+                                        include.mean = FALSE),variance.model = list(garchOrder = c(1, 1)))  # Fit garch(1,1) 
+fit1 = ugarchfit(data = dat_arma[,2], spec = r.garch)    
+fit1@fit$coef
+
+#install.packages("BB")
+library(BB)
+pmat <- matrix(runif(3,0,1), 1, 3)  # 5 starting values each of length 3 
+lower_bound <- c(1e-6, 1e-4, 1e-4)     
+upper_bound <- c(1, 1-1e-4, 1-1e-4)   
+ans1 <- multiStart(par=pmat, fn=garch_likelihood_constrained,
+                   lower = lower_bound, upper = upper_bound,
+                   returns=dat_arma[,1],action="optimize")
+ans1$par
+estimated_params1=colMeans(ans1$par)
+estimated_params1
+
+ans2 <- multiStart(par=pmat, fn=garch_likelihood_constrained,
+                   lower = lower_bound, upper = upper_bound,
+                   returns=dat_arma[,2],action="optimize")
+ans2$par
+estimated_params2=colMeans(ans2$par)
+estimated_params2
+
+
+
+
