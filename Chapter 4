@@ -1,12 +1,10 @@
 #Chapter 4
-
 rm(list=ls())
-#install.packages("MASS")
-#install.packages("grDevices")
-#install.packages("VGAMextra")
 library(VGAMextra)
-#VGAMextra
 library(MASS)
+library(metRology)
+library(GGally)
+
 sim.copula.tGARCH <- function(burnin,time,rho1,
                               w1,c1,d1,
                               w2,c2,d2,
@@ -297,3 +295,7 @@ k <- 2 # number of variables
 pars.init <- c(sig_ij=0.1,nu=4)
 op <- optim(pars.init,negloglike_t,u=X,hessian=FALSE)
 op$par
+
+#> op$par
+#sig_ij         nu 
+#0.03338113 5.37826459 
