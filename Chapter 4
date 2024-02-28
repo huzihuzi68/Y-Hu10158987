@@ -1,0 +1,299 @@
+#Chapter 4
+
+rm(list=ls())
+#install.packages("MASS")
+#install.packages("grDevices")
+#install.packages("VGAMextra")
+library(VGAMextra)
+#VGAMextra
+library(MASS)
+sim.copula.tGARCH <- function(burnin,time,rho1,
+                              w1,c1,d1,
+                              w2,c2,d2,
+                              nu)
+{
+  R<- matrix(c(1, rho1,               # Correlation matrix
+               rho1, 1), nrow = 2)
+  totaltime=burnin+time
+  #generate U_tk
+  z <- mvrnorm(totaltime, mu=c(0,0), Sigma = R)
+  s=rchisq(totaltime, nu)
+  x=sqrt(nu/s)*z
+  U1_FX1=pt(x[,1], df = nu)
+  U2_FX2=pt(x[,2], df = nu)
+  
+  U=cbind(U1_FX1,U2_FX2)
+  
+  unigarch=function(w,c,d,totaltime,nu)
+  {
+    eps=sig=0
+    sig0=w/(1-c-d)
+    z0=rt(1,nu)/sqrt(nu/(nu-2))
+    
+    eps0=z0*sig0^(0.5)
+    sig[1]=w+c*eps0^2+d*sig0
+    eps[1]=sig[1]^(0.5)*rt(1,nu)/sqrt(nu/(nu-2))
+    
+    for (i in (2:totaltime)) 
+    {
+      sig[i]=w+c*eps[i-1]^2+d*sig[i-1]
+      eps[i]=sig[i]^(0.5)*rt(1,nu)/sqrt(nu/(nu-2))
+    }
+    sigdata=sig
+    epsdata=eps
+    output=cbind(sigdata,epsdata)
+  }
+  
+  gar1=unigarch(w1,c1,d1,totaltime,nu)
+  gar2=unigarch(w2,c2,d2,totaltime,nu)
+  #install.packages("metRology")
+  library(metRology)
+  dat=matrix(0,nrow = totaltime, ncol = 2)   #simulate data based on Copula
+  for (i in (1:totaltime)) 
+  {
+    dat[i,1] <- qt.scaled(U[i,1],nu)   ####应该q
+    dat[i,2] <- qt.scaled(U[i,2],nu)
+  }
+  
+  garch1=gar1[((burnin+1):totaltime),]
+  garch2=gar2[((burnin+1):totaltime),]
+  copuladata=dat[((burnin+1):totaltime),]
+  #return(copuladata)
+  a <- data.frame(garch1)
+  b <- data.frame(garch2)
+  z <- data.frame(copuladata)
+  e <- list(a,b,z)
+}
+sim.t=sim.copula.tGARCH(burnin=200,time=1000,
+                        rho1 =0.2,
+                        w1=0.04^2,c1=0.254^2,d1=0.941^2,
+                        w2=0.03^2,c2=0.332^2,d2=0.864^2,
+                        nu=5)
+
+sim=sim.t
+sim.eps1=sim[[1]]$epsdata   #eps variance changed by copula 
+sim.eps2=sim[[2]]$epsdata
+sim.eps=cbind(sim.eps1,sim.eps2)
+sim.garch=sim.eps  #garch data  
+ggscatmat(data = sim.garch, columns = 1:2) 
+var(sim.garch)
+cor(sim.garch)
+sim.data1=sim.garch[,1]
+sim.data2=sim.garch[,2]
+sim.copulagarch=sim[[3]] 
+
+library(GGally)
+ggscatmat(data = sim[3], columns = 1:2) 
+sim.copulagarch=sim[[3]]
+plot.ts(sim.copulagarch,main="rho=0.2")
+
+
+
+############################################
+##########estimation own code###############
+############################################
+sim.copulagarch=sim[[3]]   #copula-garch data
+sim.data1=sim.copulagarch[,1]
+sim.data2=sim.copulagarch[,2]
+
+
+
+cor(sim.copulagarch)
+
+#estimation
+#########update
+########garch estimation
+garch_likelihood_constrained <- function(theta, tdata) {
+  omega <- theta[1]
+  alpha <- theta[2]
+  beta <- theta[3]
+  nu <-theta[4] 
+  # Check if parameters are within acceptable range
+  if (omega > 0 || alpha > 0 || beta > 0 || 0< alpha + beta|| 
+      alpha + beta < 1||nu>3) {
+    n=length(tdata)
+    sigma2 <- numeric(n)
+    sigma2[1] <- omega/(1-(alpha+beta))
+    for (t in 2:n) {
+      sigma2[t] <- omega+alpha*tdata[t-1]^2+beta*sigma2[t-1]
+      if (sigma2[t] <= 0) {
+        return(.Machine$double.xmax)
+      }
+    }
+    l1=n*log(gamma((nu+1)/2))
+    l2=-n*log(gamma(nu/2))
+    l3=-0.5*n*log(pi*(nu-2))
+    l4=-0.5*sum(log(abs(sigma2)))
+    l5=-(nu+1)/2*sum(log(1+tdata^2/(sigma2*(nu-2))))
+    nll=l1+l2+l3+l4+l5
+    return(-nll)
+  }
+}
+
+
+######Function multiStart (better result)
+#install.packages("BB")
+library(BB)
+pmat <- matrix(c(runif(3,0,1),runif(1,3,10)),1,4) # 5 starting values each of length 3 
+lower_bound <- c(1e-6, 1e-4, 1e-4,3)     
+upper_bound <- c(1-1e-6, 1-1e-4, 1-1e-4,10)  
+ans1 <- multiStart(par=pmat, fn=garch_likelihood_constrained,
+                   lower = lower_bound, upper = upper_bound,
+                   tdata=sim.data1,action="optimize")
+
+ans1$par
+estimated_params1=colMeans(ans1$par)
+estimated_params1
+
+ans2 <- multiStart(par=pmat, fn=garch_likelihood_constrained,
+                   lower = lower_bound, upper = upper_bound,
+                   tdata=sim.data2,action="optimize")
+ans2$par
+estimated_params2=colMeans(ans2$par)
+estimated_params2
+
+
+#true_par=c(w=0.04^2,c=0.254^2,d=0.941^2)
+#> true_par
+#w        c        d 
+#0.001600 0.064516 0.885481 
+
+#case2
+#gar1=unigarch(totaltime=1200,burnin=200,w=0.03^2,c=0.332^2,d=0.864^2)
+#true_par=c(w=0.03^2,c=0.332^2,d=0.864^2)
+#> true_par
+#w        c        d 
+#0.000900 0.110224 0.746496 
+
+
+spec <- ugarchspec(variance.model = list(garchOrder = c(1, 1)),
+                   mean.model = list(armaOrder = c(0, 0), include.mean = FALSE),
+                   distribution.model = "std")
+fit1 = ugarchfit(data = sim.data1, spec = spec)    
+optim_result1=fit1@fit$coef
+
+fit2 = ugarchfit(data = sim.data2, spec = spec)    
+optim_result2=fit2@fit$coef
+estimated_params1=optim_result1
+estimated_params2=optim_result2
+
+####
+T <- length(sim.data1)
+sigmahat2_1=sigmahat2_2=numeric(T)
+sigmahat2_1[1] <-var(sim.data1)
+sigmahat2_2[1] <-var(sim.data2)
+data.hat1=data.hat2=numeric(T)
+
+z1=rt(T,estimated_params1[4])/sqrt(estimated_params1[4]/(estimated_params1[4]-2))
+z2=rt(T,estimated_params2[4])/sqrt(estimated_params2[4]/(estimated_params2[4]-2))
+
+#set.seed(1)
+data.hat1[1]=sigmahat2_1[1]^(0.5)*z1[1]
+data.hat2[1]=sigmahat2_2[1]^(0.5)*z2[1]
+
+
+for (t in 2:T) 
+{
+  sigmahat2_1[t] <- estimated_params1[1]+estimated_params1[2]*data.hat1[t-1]^2+
+    estimated_params1[3]*sigmahat2_1[t-1]
+  data.hat1[t]=sigmahat2_1[t]^(0.5)*z1[t]
+  
+  sigmahat2_2[t] <- estimated_params2[1]+estimated_params2[2]*data.hat2[t-1]^2+
+    estimated_params2[3]*sigmahat2_2[t-1]
+  data.hat2[t]=sigmahat2_2[t]^(0.5)*z2[t]
+  #rt.scaled(1, df=estimated_params2[4], mean = 0, sd = 1)
+  #
+
+}
+
+#dat=cbind(data.hat1,data.hat2,data.hat3)
+#cor(dat)
+#plot.ts(dat)
+#ggscatmat(data =dat, columns = 1:3) 
+
+#sighat=cbind(sigmahat2_1,sigmahat2_2,sigmahat2_3)
+sighat=cbind(sigmahat2_1,sigmahat2_2)
+
+plot.ts(sqrt(sighat))
+plot(density(data.hat1))
+plot(density(data.hat2))
+dat=sim.copulagarch
+
+
+#X=matrix(0,nrow = length(dat[,1]), ncol = 3)
+#for (i in 1:length(dat[,1])) 
+#{
+#  X[i,1] <- pt.scaled(dat[i,1],df=estimated_params1[4],mean=0, sd=sighat[i,1]^(0.5))   #应该p distribution function CDF
+#  X[i,2] <- pt.scaled(dat[i,2],df=estimated_params2[4],mean=0, sd=sighat[i,2]^(0.5))
+#  X[i,3] <- pt.scaled(dat[i,3],df=estimated_params3[4],mean=0, sd=sighat[i,3]^(0.5))
+#}
+#plot.ts(X)
+#library(GGally)
+#ggscatmat(data = X, columns = 1:3) 
+
+
+X=matrix(0,nrow = length(dat[,1]), ncol = 2)
+for (i in 1:length(dat[,1])) 
+{
+  X[i,1] <- pt(dat[i,1],df=estimated_params1[4])   #应该p distribution function CDF
+  X[i,2] <- pt(dat[i,2],df=estimated_params2[4])
+}
+plot.ts(X)
+library(GGally)
+ggscatmat(data = X, columns = 1:2) 
+
+
+
+###########run
+negloglike_t=function(theta,u) 
+{
+  #nu=theta[length(theta)]  
+  n <- nrow(u) 
+  d <- ncol(u)
+  nu=theta[2]
+  
+  tdata=matrix(0,nrow = n, ncol = d)
+  for (i in 1:n) 
+  {
+    tdata[i,1] <- qt(u[i,1],df=nu)   #应该p distribution function CDF
+    tdata[i,2] <- qt(u[i,2],df=nu)
+  }
+  
+  Sigma.diag <- c(1,1)
+  theta[1]=pmax(pmin(theta[1],1), -1)
+
+  Sigma.offd <- theta[1]
+  Sigma <- matrix(NA, d, d)
+  Sigma[upper.tri(Sigma)] <- Sigma.offd
+  Sigma <- t(Sigma)
+  Sigma[upper.tri(Sigma)] <- Sigma.offd
+  diag(Sigma) <- Sigma.diag
+  
+  
+  l1=-0.5*n*log(abs(det(Sigma)))
+  l2= n * log(gamma((nu + d) / 2))
+  l3= -n * log(gamma(nu/2))
+  l4= n*d*log(gamma(nu/2))
+  l5= -n*d*log(gamma((nu + 1) / 2))
+  
+  #compute summation 
+  svdSigma <- svd(Sigma)
+  Sigma_inv <- svdSigma$v%*%diag(1/svdSigma$d)%*%t(svdSigma$u)
+  s=0
+  for (i in 1:n)
+  {
+    ZRZ=t(tdata[i,])%*% Sigma_inv %*% (tdata[i,])
+    s[i]=ZRZ/nu+1
+  }
+  l6= -((nu + d) / 2) *sum(log(abs(s)))
+  l7= ((nu + 1) / 2) * sum(rowSums(log(1 + tdata^2 / nu)))
+  nll=l1+l2+l3+l4+l5+l6+l7
+  return(-nll)
+}
+
+negloglike_t(c(0.1,6),u=X)
+
+k <- 2 # number of variables
+pars.init <- c(sig_ij=0.1,nu=4)
+op <- optim(pars.init,negloglike_t,u=X,hessian=FALSE)
+op$par
