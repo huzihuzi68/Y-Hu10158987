@@ -302,4 +302,208 @@ op$par
 
 
 
+data=read.csv(file="oil.csv")
+oil=data.frame(data)
+head(oil)
+WTI=oil[,2]
+Brent=oil[,3]
+summary(WTI)
+length(WTI)
+summary(Brent)
+
+#install.packages("moments")
+#install.packages("tseries")
+library(moments)
+library(tseries)
+skewness_value <- skewness(WTI)
+kurtosis_value <- kurtosis(WTI)
+jb_test <- jarque.bera.test(WTI)
+jb_statistic <- jb_test$statistic
+jb_p_value <- jb_test$p.value
+
+skewness_value <- skewness(Brent)
+kurtosis_value <- kurtosis(Brent)
+jb_test <- jarque.bera.test(Brent)
+jb_statistic <- jb_test$statistic
+jb_p_value <- jb_test$p.value
+
+adf_test <- adf.test(WTI, alternative = "stationary")
+adf_test <- adf.test(Brent, alternative = "stationary")
+
+
+
+par(mfrow=c(2,1))
+day=as.Date(oil$Date)
+plot(day,WTI,xaxt="n",type="l",
+     ylab="WTI",xlab="time")
+plot(day,Brent,xaxt="n",type="l",
+     ylab="Brent",xlab="time")
+axis.Date(1, at = seq(day[1], day[length(day)], by = "4 years"),
+          format = "%d-%m-%Y", las = 2)
+
+
+
+library(forecast)
+auto.arima(WTI)
+auto.arima(Brent)
+####residuals plot
+fit1=arima(WTI,order=c(0,0,0))
+fit2=arima(Brent,order=c(1,0,0))
+
+dat_arma<-cbind(residuals(fit1),residuals(fit2))
+mean(WTI)
+sum(WTI)
+var(dat_arma)
+cor(dat_arma)
+m <- apply(dat_arma, 2, mean)
+v <- apply(dat_arma, 2, var)
+#dat_arma_std <- t((t(dat_arma)-m)/sqrt(v))
+par(mfrow=c(2,1))
+plot(day[1:length(day)],dat_arma[,1],xaxt="n",type="l",
+     ylab="WTI residuals",xlab="time")
+plot(day[1:length(day)],dat_arma[,2],xaxt="n",type="l",
+     ylab="Brent residuals",xlab="time")
+axis.Date(1, at = seq(day[1], day[length(day)], by = "4 years"),
+          format = "%d-%m-%Y", las = 2)
+
+spec <- ugarchspec(variance.model = list(garchOrder = c(1, 1)),
+                   mean.model = list(armaOrder = c(0, 0), include.mean = FALSE),
+                   distribution.model = "std")
+fit1 = ugarchfit(data = WTI, spec = spec)    
+optim_result1=fit1@fit$coef
+
+fit2 = ugarchfit(data = Brent, spec = spec)    
+optim_result2=fit1@fit$coef
+
+
+library(rugarch)
+library(rmgarch)
+library(copula)
+
+
+garchfit_wti = ugarchfit(spec, WTI)
+garchfit_brent = ugarchfit(spec, Brent)
+
+
+
+library(copula)
+# Normal copula
+normal.cop <- normalCopula(dim=2)
+m <- pobs(as.matrix(dat_arma))
+fit.cop<- fitCopula(normal.cop,m,method="ml")
+# Coefficients
+rho <- coef(fit.cop)
+print(rho)
+0.9007  
+log_likelihood=1168
+p=1
+n <- length(m[,2])
+# Calculate AIC
+aic <- -2 * log_likelihood + 2 * p
+# Calculate BIC
+bic <- -2 * log_likelihood + log(n) * p
+aic
+bic
+
+tau(normalCopula(param = 0.9007378 ))
+
+
+gf <- gofCopula(normalCopula(dim = 2), as.matrix(dat_arma), N = 50)
+gf
+
+> gf
+
+Parametric bootstrap-based goodness-of-fit test of Normal
+copula, dim. d = 2, with 'method'="Sn", 'estim.method'="mpl":
+  
+  data:  x
+statistic = 0.0676, parameter = 0.90074, p-value = 0.009804
+
+
+copula_spec = tCopula(dim = 2)
+fit_copula = fitCopula(copula_spec, m, method = "ml")
+Call: fitCopula(copula_spec, data = m, ... = pairlist(method = "ml"))
+Fit based on "maximum likelihood" and 1407 2-dimensional observations.
+Copula: tCopula 
+rho.1     df 
+0.9208 4.0000 
+The maximized loglikelihood is 1332 
+Optimization converged
+tau(claytonCopula(param = 0.9208 ))
+
+
+
+
+t_copula <- tCopula(dim = 2, dispstr = "un")
+
+gof <- gofCopula(t_copula, u, method = "SnB")
+gof #can't
+
+
+# Load necessary libraries
+library(copula)
+
+# Assuming 'data_frame' is a data frame with your bivariate data
+# Convert your data to uniform marginals if not already in [0,1] range
+u <- pobs(as.matrix(dat_arma))
+
+# Specify a t-copula with an initial guess for the correlation parameter
+# and the degrees of freedom (df)
+# For instance, here we use a bivariate copula with df=4
+t_cop <- tCopula(dim = 2)
+
+# Fit the copula to the data
+fit <- fitCopula(t_cop, u, method = "ml")
+
+# Extract the parameter from the fit which is the correlation matrix
+rho <- fit@estimate[1]
+nu=fit@estimate[2]
+# Calculate Kendall's tau from the correlation parameter
+tau <- 2 * atan(rho) / pi
+
+
+# Output Kendall's tau
+print(tau)
+
+# Alternatively, you can directly compute Kendall's tau using the 'kendallTau' function
+k_tau <- kendallTau(fit)
+
+# Calculate Kendall's tau
+tau <- 2 * atan(sqrt((nu + 1) / nu) * rho) / pi
+
+# Print the result
+print(k_tau)
+
+0.9007  
+log_likelihood=1332
+p=2
+n <- length(m[,2])
+# Calculate AIC
+aic <- -2 * log_likelihood + 2 * p
+# Calculate BIC
+bic <- -2 * log_likelihood + log(n) * p
+aic
+bic
+
+
+
+
+install.packages("gofCopula")
+library(gofCopula)
+gofCvM("t",df = 4, dat_arma)
+
+u <- pobs(dat_arma)
+
+
+
+## A three-dimensional example  ------------------------------------
+t.copula <- tCopula(dim = 2, dispstr = "un", df.fixed = TRUE)
+x <- rCopula(n, tCopula(0.92, dim = 2, dispstr = "un"))
+gofCopula(t.copula, dat_arma, N=n, simulation="mult")
+
+if(FALSE) # no yet possible
+  gofCopula(t.copula, x, N=N, simulation="mult", estim.method="itau")
+
+
+
 
