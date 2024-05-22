@@ -57,7 +57,7 @@ sim.copula.tGARCH <- function(burnin,time,rho1,
   dat=matrix(0,nrow = totaltime, ncol = 2)   #simulate data based on Copula
   for (i in (1:totaltime)) 
   {
-    dat[i,1] <- qt.scaled(U[i,1],nu)   ####应该q
+    dat[i,1] <- qt.scaled(U[i,1],nu)   
     dat[i,2] <- qt.scaled(U[i,2],nu)
   }
   
@@ -244,7 +244,7 @@ dat=sim.copulagarch
 X=matrix(0,nrow = length(dat[,1]), ncol = 2)
 for (i in 1:length(dat[,1])) 
 {
-  X[i,1] <- pt(dat[i,1],df=estimated_params1[4])   #应该p distribution function CDF
+  X[i,1] <- pt(dat[i,1],df=estimated_params1[4])   #p-distribution function CDF
   X[i,2] <- pt(dat[i,2],df=estimated_params2[4])
 }
 plot.ts(X)
@@ -560,13 +560,11 @@ cor_dynamic <- sapply(window_size:length(ts1), function(i) {
 })
 
 
-# 动态相关系数的计算
 window_size <- 250
 cor_dynamic <- sapply(window_size:length(ts1), function(i) {
   window_resid1 <- resid1[(i-window_size+1):i]
   window_resid2 <- resid2[(i-window_size+1):i]
   cor_temp <- cor(window_resid1, window_resid2)
-  # Fisher 变换确保相关系数在 [-1, 1]
   return(cor_temp)
   #return(0.5 * log((1 + cor_temp) / (1 - cor_temp)))
 })
