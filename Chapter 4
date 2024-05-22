@@ -2,7 +2,9 @@
 ###############Chapter 4###############
 #######################################
 
-#simulation
+########################################
+###############Simulation###############
+########################################
 rm(list=ls())
 library(VGAMextra)
 library(MASS)
@@ -500,7 +502,6 @@ bic
 install.packages("gofCopula")
 library(gofCopula)
 gofCvM("t",df = 4, dat_arma)
-
 u <- pobs(dat_arma)
 
 
