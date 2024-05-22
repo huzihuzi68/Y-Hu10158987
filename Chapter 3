@@ -1,5 +1,8 @@
-#section 4.2
-#section 4.2.1
+######################################################
+####################Chapter 3#########################
+######################################################
+
+#Simualtion process
 #T=1000,R=500
 rm(list=ls())
 repe=500
@@ -197,7 +200,10 @@ abline(a=0, b=1, col="red")
 qqnorm(xs[,2])
 abline(a=0, b=1, col="red")
 dev.off()
-#4.2.4
+
+
+
+
 #install.packages("shapes")
 library(shapes)
 distance=0
@@ -463,8 +469,10 @@ legend("topright", legend = c("data 1","data 2","data 3"),cex = 0.7,lty = 1, col
 abline(h=0,lty=2,lwd=2,col=9)
 boxplot(input1,xlab="difference between two conditional covariances",ylab="distance",col=c(2:4))
 dev.off()
-#section 6
-#6.1.1 negC
+
+
+
+#negC
 #T=1000,R=500
 rm(list=ls())
 repe=500
@@ -950,8 +958,9 @@ plot(x,y,type="l",ylim=c(0,3),col="3")
 lines(density(BB[,4]))
 abline(v=B[2,2],col=2)
 dev.off()
-#6.2 neg AB BC AC
-#6.2.1 negAB
+
+###neg AB BC AC
+#negAB
 #T=1000,R=500
 rm(list=ls())
 repe=500
@@ -1280,7 +1289,7 @@ lines(density(BB[,4]))
 abline(v=B[2,2],col=2)
 dev.off()
 ###########
-#6.2.3 neg BC
+#neg BC
 #T=1000,R=500
 rm(list=ls())
 repe=500
@@ -1604,9 +1613,10 @@ plot(x,y,type="l",ylim=c(0,3),col="3")
 lines(density(BB[,4]))
 abline(v=B[2,2],col=2)
 dev.off()
+
 ###################
-#6.2 likelihood
-########6.2negative C
+#likelihood
+########negative C
 CC=read.csv("Estimation_C.csv")
 CC=as.matrix(CC)
 AA=read.csv("Estimation_A.csv")
@@ -1758,7 +1768,7 @@ sumqua[j]=sum(qua)
 l_negC=-2*realT/2*log(2*pi)-sumlogdist/2-sumqua/2
 diff=l_negC-l
 plot.ts(diff)
-#######Section 7
+#######
 #boostrap GARCH
 ###univariate
 #simulate univariate BEKK(1,1)
@@ -2714,17 +2724,4 @@ legend("topright", legend = c("data 1","data 2","data 3"),cex = 0.7,lty = 1, col
 abline(h=0,lty=2,lwd=2,col=9)
 boxplot(input1,xlab="difference between two conditional covariances",ylab="distance",col=c(2:4))
 dev.off()
-
-
-
-
-
-  
-
-  
-
-
-
-
-  
 
