@@ -110,7 +110,7 @@ plot.ts(xx2[,2],main="Time series of variable 2",ylab="V2",xlab="time",ylim = c(
 lines(x=c(1:1000),xx2[,50],col=2)
 #legend("bottomright", legend = c("data set 1","data set 2"),lty = 1, col = 1:2,cex = 0.5)
 dev.off()
-#section 4.2.2
+
 install.packages("mgarchBEKK")
 library(mgarchBEKK)
 library(tseries)
@@ -217,8 +217,7 @@ plot.ts(distance)
 boxplot(distance)
 dev.off()
 
-#section 5
-#5.1
+
 #case 1
 C=matrix(c(0.004,0,0.005,0.003), nrow = 2, ncol = 2) #upper
 CTC=t(C)%*%C
@@ -413,7 +412,7 @@ abline(v=Bsqu[2,1],col=2)
 plot(density(BTB[,4]))
 abline(v=Bsqu[2,2],col=2)
 dev.off()
-#5.2 distance for all simulations
+# distance for all simulations
 #install.packages("shapes")
 CC=read.csv("Estimation_C.csv")
 CC=as.matrix(CC)
