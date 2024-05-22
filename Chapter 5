@@ -1,0 +1,1511 @@
+#########################################################
+###################Chapter 5#############################
+#########################################################
+
+
+
+#########################################################
+#####################Simulation##########################
+#########################################################
+rm(list=ls())
+library(VGAMextra)
+library(MASS)
+library(metRology)
+library(GGally)
+
+sim.copula.tGARCH <- function(burnin,time,rho1,
+                              w1,c1,d1,
+                              w2,c2,d2,
+                              nu)
+{
+  R<- matrix(c(1, rho1,               # Correlation matrix
+               rho1, 1), nrow = 2)
+  totaltime=burnin+time
+  #generate U_tk
+  z <- mvrnorm(totaltime, mu=c(0,0), Sigma = R)
+  s=rchisq(totaltime, nu)
+  x=sqrt(nu/s)*z
+  U1_FX1=pt(x[,1], df = nu)
+  U2_FX2=pt(x[,2], df = nu)
+  
+  U=cbind(U1_FX1,U2_FX2)
+  
+  unigarch=function(w,c,d,totaltime,nu)
+  {
+    eps=sig=0
+    sig0=w/(1-c-d)
+    z0=rt(1,nu)/sqrt(nu/(nu-2))
+    
+    eps0=z0*sig0^(0.5)
+    sig[1]=w+c*eps0^2+d*sig0
+    eps[1]=sig[1]^(0.5)*rt(1,nu)/sqrt(nu/(nu-2))
+    
+    for (i in (2:totaltime)) 
+    {
+      sig[i]=w+c*eps[i-1]^2+d*sig[i-1]
+      eps[i]=sig[i]^(0.5)*rt(1,nu)/sqrt(nu/(nu-2))
+    }
+    sigdata=sig
+    epsdata=eps
+    output=cbind(sigdata,epsdata)
+  }
+  
+  gar1=unigarch(w1,c1,d1,totaltime,nu)
+  gar2=unigarch(w2,c2,d2,totaltime,nu)
+  #install.packages("metRology")
+  library(metRology)
+  dat=matrix(0,nrow = totaltime, ncol = 2)   #simulate data based on Copula
+  for (i in (1:totaltime)) 
+  {
+    dat[i,1] <- qt.scaled(U[i,1],nu)   ####应该q
+    dat[i,2] <- qt.scaled(U[i,2],nu)
+  }
+  
+  garch1=gar1[((burnin+1):totaltime),]
+  garch2=gar2[((burnin+1):totaltime),]
+  copuladata=dat[((burnin+1):totaltime),]
+  #return(copuladata)
+  a <- data.frame(garch1)
+  b <- data.frame(garch2)
+  z <- data.frame(copuladata)
+  e <- list(a,b,z)
+}
+sim.t=sim.copula.tGARCH(burnin=200,time=1000,
+                        rho1 =0.2,
+                        w1=0.04^2,c1=0.254^2,d1=0.941^2,
+                        w2=0.03^2,c2=0.332^2,d2=0.864^2,
+                        nu=5)
+
+#sim.copulagarch=dat_arma
+
+ggscatmat(data = sim.copulagarch, columns = 1:2) 
+plot.ts(sim.copulagarch,main="oil residuals for WTI and Brent")
+
+sim=sim.t
+sim.eps1=sim[[1]]$epsdata   #eps variance changed by copula 
+sim.eps2=sim[[2]]$epsdata
+sim.eps=cbind(sim.eps1,sim.eps2)
+sim.garch=sim.eps  #garch data  
+ggscatmat(data = sim.garch, columns = 1:2) 
+var(sim.garch)
+cor(sim.garch)
+sim.data1=sim.garch[,1]
+sim.data2=sim.garch[,2]
+sim.copulagarch=sim[[3]] 
+
+library(GGally)
+ggscatmat(data = sim[3], columns = 1:2) 
+sim.copulagarch=sim[[3]]
+plot.ts(sim.copulagarch,main="rho=0.2")
+
+
+
+############################################
+##########estimation own code###############
+############################################
+sim.copulagarch=sim[[3]]   #copula-garch data
+sim.data1=sim.copulagarch[,1]
+sim.data2=sim.copulagarch[,2]
+
+cor(sim.copulagarch)
+
+#estimation
+#########update
+########garch estimation
+garch_likelihood_constrained <- function(theta, tdata) {
+  omega <- theta[1]
+  alpha <- theta[2]
+  beta <- theta[3]
+  nu <-theta[4] 
+  # Check if parameters are within acceptable range
+  if (omega > 0 || alpha > 0 || beta > 0 || 0< alpha + beta|| 
+      alpha + beta < 1||nu>3) {
+    n=length(tdata)
+    sigma2 <- numeric(n)
+    sigma2[1] <- omega/(1-(alpha+beta))
+    for (t in 2:n) {
+      sigma2[t] <- omega+alpha*tdata[t-1]^2+beta*sigma2[t-1]
+      if (sigma2[t] <= 0) {
+        return(.Machine$double.xmax)
+      }
+    }
+    l1=n*log(gamma((nu+1)/2))
+    l2=-n*log(gamma(nu/2))
+    l3=-0.5*n*log(pi*(nu-2))
+    l4=-0.5*sum(log(abs(sigma2)))
+    l5=-(nu+1)/2*sum(log(1+tdata^2/(sigma2*(nu-2))))
+    nll=l1+l2+l3+l4+l5
+    return(-nll)
+  }
+}
+
+
+######Function multiStart (better result)
+#install.packages("BB")
+library(BB)
+pmat <- matrix(c(runif(3,0,1),runif(1,3,10)),1,4) # 5 starting values each of length 3 
+lower_bound <- c(1e-6, 1e-4, 1e-4,3)     
+upper_bound <- c(1-1e-6, 1-1e-4, 1-1e-4,10)  
+ans1 <- multiStart(par=pmat, fn=garch_likelihood_constrained,
+                   lower = lower_bound, upper = upper_bound,
+                   tdata=sim.data1,action="optimize")
+
+ans1$par
+estimated_params1=colMeans(ans1$par)
+estimated_params1
+
+ans2 <- multiStart(par=pmat, fn=garch_likelihood_constrained,
+                   lower = lower_bound, upper = upper_bound,
+                   tdata=sim.data2,action="optimize")
+ans2$par
+estimated_params2=colMeans(ans2$par)
+estimated_params2
+
+
+#true_par=c(w=0.04^2,c=0.254^2,d=0.941^2)
+#> true_par
+#w        c        d 
+#0.001600 0.064516 0.885481 
+
+#case2
+#gar1=unigarch(totaltime=1200,burnin=200,w=0.03^2,c=0.332^2,d=0.864^2)
+#true_par=c(w=0.03^2,c=0.332^2,d=0.864^2)
+#> true_par
+#w        c        d 
+#0.000900 0.110224 0.746496 
+
+
+spec <- ugarchspec(variance.model = list(garchOrder = c(1, 1)),
+                   mean.model = list(armaOrder = c(0, 0), include.mean = FALSE),
+                   distribution.model = "std")
+fit1 = ugarchfit(data = sim.data1, spec = spec)    
+optim_result1=fit1@fit$coef
+
+fit2 = ugarchfit(data = sim.data2, spec = spec)    
+optim_result2=fit2@fit$coef
+estimated_params1=optim_result1
+estimated_params2=optim_result2
+
+####
+T <- length(sim.data1)
+sigmahat2_1=sigmahat2_2=numeric(T)
+sigmahat2_1[1] <-var(sim.data1)
+sigmahat2_2[1] <-var(sim.data2)
+data.hat1=data.hat2=numeric(T)
+
+z1=rt(T,estimated_params1[4])/sqrt(estimated_params1[4]/(estimated_params1[4]-2))
+z2=rt(T,estimated_params2[4])/sqrt(estimated_params2[4]/(estimated_params2[4]-2))
+
+#set.seed(1)
+data.hat1[1]=sigmahat2_1[1]^(0.5)*z1[1]
+data.hat2[1]=sigmahat2_2[1]^(0.5)*z2[1]
+
+
+for (t in 2:T) 
+{
+  sigmahat2_1[t] <- estimated_params1[1]+estimated_params1[2]*data.hat1[t-1]^2+
+    estimated_params1[3]*sigmahat2_1[t-1]
+  data.hat1[t]=sigmahat2_1[t]^(0.5)*z1[t]
+  
+  sigmahat2_2[t] <- estimated_params2[1]+estimated_params2[2]*data.hat2[t-1]^2+
+    estimated_params2[3]*sigmahat2_2[t-1]
+  data.hat2[t]=sigmahat2_2[t]^(0.5)*z2[t]
+  #rt.scaled(1, df=estimated_params2[4], mean = 0, sd = 1)
+  #
+
+}
+
+#dat=cbind(data.hat1,data.hat2,data.hat3)
+#cor(dat)
+#plot.ts(dat)
+#ggscatmat(data =dat, columns = 1:3) 
+
+#sighat=cbind(sigmahat2_1,sigmahat2_2,sigmahat2_3)
+sighat=cbind(sigmahat2_1,sigmahat2_2)
+
+plot.ts(sqrt(sighat))
+plot(density(data.hat1))
+plot(density(data.hat2))
+dat=sim.copulagarch
+
+
+#X=matrix(0,nrow = length(dat[,1]), ncol = 3)
+#for (i in 1:length(dat[,1])) 
+#{
+#  X[i,1] <- pt.scaled(dat[i,1],df=estimated_params1[4],mean=0, sd=sighat[i,1]^(0.5))   #应该p distribution function CDF
+#  X[i,2] <- pt.scaled(dat[i,2],df=estimated_params2[4],mean=0, sd=sighat[i,2]^(0.5))
+#  X[i,3] <- pt.scaled(dat[i,3],df=estimated_params3[4],mean=0, sd=sighat[i,3]^(0.5))
+#}
+#plot.ts(X)
+#library(GGally)
+#ggscatmat(data = X, columns = 1:3) 
+
+
+X=matrix(0,nrow = length(dat[,1]), ncol = 2)
+for (i in 1:length(dat[,1])) 
+{
+  X[i,1] <- pt(dat[i,1],df=estimated_params1[4])   #应该p distribution function CDF
+  X[i,2] <- pt(dat[i,2],df=estimated_params2[4])
+}
+plot.ts(X)
+library(GGally)
+ggscatmat(data = X, columns = 1:2) 
+
+
+
+###########run
+negloglike_t=function(theta,u) 
+{
+  #nu=theta[length(theta)]  
+  n <- nrow(u) 
+  d <- ncol(u)
+  nu=theta[2]
+  
+  tdata=matrix(0,nrow = n, ncol = d)
+  for (i in 1:n) 
+  {
+    tdata[i,1] <- qt(u[i,1],df=nu)   #应该p distribution function CDF
+    tdata[i,2] <- qt(u[i,2],df=nu)
+  }
+  
+  Sigma.diag <- c(1,1)
+  theta[1]=pmax(pmin(theta[1],1), -1)
+
+  Sigma.offd <- theta[1]
+  Sigma <- matrix(NA, d, d)
+  Sigma[upper.tri(Sigma)] <- Sigma.offd
+  Sigma <- t(Sigma)
+  Sigma[upper.tri(Sigma)] <- Sigma.offd
+  diag(Sigma) <- Sigma.diag
+  
+  
+  l1=-0.5*n*log(abs(det(Sigma)))
+  l2= n * log(gamma((nu + d) / 2))
+  l3= -n * log(gamma(nu/2))
+  l4= n*d*log(gamma(nu/2))
+  l5= -n*d*log(gamma((nu + 1) / 2))
+  
+  #compute summation 
+  svdSigma <- svd(Sigma)
+  Sigma_inv <- svdSigma$v%*%diag(1/svdSigma$d)%*%t(svdSigma$u)
+  s=0
+  for (i in 1:n)
+  {
+    ZRZ=t(tdata[i,])%*% Sigma_inv %*% (tdata[i,])
+    s[i]=ZRZ/nu+1
+  }
+  l6= -((nu + d) / 2) *sum(log(abs(s)))
+  l7= ((nu + 1) / 2) * sum(rowSums(log(1 + tdata^2 / nu)))
+  nll=l1+l2+l3+l4+l5+l6+l7
+  return(-nll)
+}
+
+negloglike_t(c(0.1,6),u=X)
+
+k <- 2 # number of variables
+pars.init <- c(sig_ij=0.1,nu=4)
+op <- optim(pars.init,negloglike_t,u=X,hessian=FALSE)
+op$par
+
+#> op$par
+#sig_ij         nu 
+#0.03338113 5.37826459 
+
+
+#####gaussian copula
+
+####
+T <- length(sim.data1)
+sigmahat2_1=sigmahat2_2=numeric(T)
+sigmahat2_1[1] <-var(sim.data1)
+sigmahat2_2[1] <-var(sim.data2)
+data.hat1=data.hat2=numeric(T)
+
+z1=rt(T,estimated_params1[4])/sqrt(estimated_params1[4]/(estimated_params1[4]-2))
+z2=rt(T,estimated_params2[4])/sqrt(estimated_params2[4]/(estimated_params2[4]-2))
+
+#set.seed(1)
+data.hat1[1]=sigmahat2_1[1]^(0.5)*z1[1]
+data.hat2[1]=sigmahat2_2[1]^(0.5)*z2[1]
+
+for (t in 2:T) 
+{
+  sigmahat2_1[t] <- estimated_params1[1]+estimated_params1[2]*sim.data1[t-1]^2+
+    estimated_params1[3]*sigmahat2_1[t-1]
+  sigmahat2_2[t] <- estimated_params2[1]+estimated_params2[2]*sim.data2[t-1]^2+
+    estimated_params2[3]*sigmahat2_2[t-1]
+}
+
+
+dat=cbind(sim.data1,sim.data2)
+plot.ts(dat)
+sighat=cbind(sigmahat2_1,sigmahat2_2)
+plot.ts(sighat)
+dat=sim.copulagarch
+
+###add copula
+X=matrix(0,nrow = length(dat[,1]), ncol = 2)
+for (i in 1:length(dat[,1])) 
+{
+  X[i,1] <- pnorm(dat[i,1],mean=0, sd=sighat[i,1]^(0.5))   #应该p distribution function
+  X[i,2] <- pnorm(dat[i,2],mean=0, sd=sighat[i,2]^(0.5))
+}
+
+cor(X)
+
+
+ll_multC=function(theta,X) {
+  n <- nrow(X)
+  k <- ncol(X)
+  a <- qnorm(X[, 1],0,1)
+  b <- qnorm(X[, 2],0,1)
+  X=cbind(a,b)
+  
+  Sigma.diag <- c(1,1)
+  theta=pmax(pmin(theta[1],1), -1)
+  # def Sigma
+  #Sigma is correlation matrix
+  Sigma.diag <- c(1,1)
+  Sigma.offd <- theta
+  Sigma <- matrix(NA, k, k)
+  Sigma[upper.tri(Sigma)] <- Sigma.offd
+  Sigma <- t(Sigma)
+  Sigma[upper.tri(Sigma)] <- Sigma.offd
+  diag(Sigma) <- Sigma.diag
+  #compute summation 
+  s=0
+  for (i in 1:n)
+  {
+    s[i]=t(X[i,])%*% (solve(Sigma)) %*% (X[i,])+t(X[i,])%*% (-diag(k)) %*% (X[i,])
+  }
+  # compute log likelihood
+  logl1=-0.5*n*log(det(Sigma)) 
+  logl2=-0.5*sum(s)
+  logl=logl1+logl2
+  return(-logl)
+}
+# initial parameter values
+
+k <- 2 # number of variables
+pars.init <- c(sig_ij=0.1)
+
+ll_multC(pars.init,X)
+
+pars.init=0.1
+lower_bound <--1   
+upper_bound <- 1
+o=optim(pars.init,ll_multC,X=X,hessian=FALSE,method = "Brent",
+        lower = lower_bound, upper = upper_bound)
+o$par
+o
+
+log_likelihood=594.31
+p <- 2 
+# Number of observations
+n <- length(X[,2])
+# Calculate AIC
+aic <- -2 * log_likelihood + 2 * p
+# Calculate BIC
+bic <- -2 * log_likelihood + log(n) * p
+aic
+bic
+
+
+
+
+#install.packages("KScorrect")
+library(rugarch) 
+library(copula)   
+library(KScorrect) 
+spec <- ugarchspec(variance.model = list(model = "sGARCH"),
+                   mean.model = list(armaOrder = c(0,0)),
+                   distribution.model = "norm")
+
+garch1 <- ugarchfit(spec, data = ts1)
+garch2 <- ugarchfit(spec, data = ts2)
+
+r.garch <- ugarchspec(mean.model = list(armaOrder = c(0,0),
+                                        include.mean = FALSE),variance.model = list(garchOrder = c(1, 1)))  # Fit garch(1,1) 
+fit1 = ugarchfit(data = X[,1], spec = r.garch)    
+fit2 = ugarchfit(data = X[,2], spec = r.garch)   
+fit1@fit$coef
+
+resid1 <- fit1@fit$z
+resid2 <- fit1@fit$z
+plot.ts(resid1)
+
+copula_fit <- copula::fitCopula(copula::claytonCopula(dim = 2), data = cbind(resid1, resid2), method = "ml")
+
+
+
+library(rugarch)
+library(copula)
+library(goftest)
+spec <- ugarchspec(variance.model = list(garchOrder = c(1, 1)),
+                   mean.model = list(armaOrder = c(0, 0)),
+                   distribution.model = "norm")
+garch_fit1 <- ugarchfit(spec, data = X[,1])
+garch_fit2 <- ugarchfit(spec, data = X[,2])
+
+std_resid1 <- residuals(garch_fit1, standardize = TRUE)
+std_resid2 <- residuals(garch_fit2, standardize = TRUE)
+
+u1 <- pnorm(std_resid1)
+u2 <- pnorm(std_resid2)
+fit <- fitCopula(copula = normalCopula(dim = 2), data = cbind(u1, u2), method = "ml")
+
+sim_data <- rCopula(n = length(std_resid1), copula = normalCopula(param = fit@estimate, dim = 2))
+sim_u1 <- sim_data[, 1]
+sim_u2 <- sim_data[, 2]
+
+# Convert simulated copula data back to the space of the original data
+sim_ts1 <- qnorm(sim_u1)
+sim_ts2 <- qnorm(sim_u2)
+
+# Calculate and print the KS statistic
+ks_test1 <- ks.test(std_resid1, sim_ts1)
+ks_test2 <- ks.test(std_resid2, sim_ts2)
+
+# 
+print(ks_test1)
+print(ks_test2)
+
+
+
+
+
+#Dynamic Copula Parameter Estimation
+rm(list=ls())
+library(rugarch)
+#install.packages("copula")
+#library(copula)
+library(mvtnorm)
+
+# simulation GARCH(1,1) data for 2 series
+simulate_garch <- function(n, mu, alpha0, alpha1, beta1) {
+  epsilon <- numeric(n)
+  sigma2 <- numeric(n)
+  sigma2[1] <- alpha0 / (1 - alpha1 - beta1)
+  for (t in 2:n) {
+    sigma2[t] <- alpha0 + alpha1 * epsilon[t-1]^2 + beta1 * sigma2[t-1]
+    epsilon[t] <- rnorm(1, mean = 0, sd = sqrt(sigma2[t]))
+  }
+  return(mu + epsilon)
+}
+
+#Set parameters and simulate data
+n <- 1000
+mu <- 0; alpha0 <- 0.01; alpha1 <- 0.05; beta1 <- 0.94
+ts1 <- simulate_garch(n, mu, alpha0, alpha1, beta1)
+ts2 <- simulate_garch(n, mu, alpha0, alpha1, beta1)
+
+plot.ts(ts1)
+plot.ts(ts2)
+cor(ts1,ts2)
+
+# Fit a GARCH model
+spec <- ugarchspec(variance.model = list(model = "sGARCH", garchOrder = c(1, 1)), 
+                   mean.model = list(armaOrder = c(0,0), include.mean = TRUE))
+garch_fit1 <- ugarchfit(spec, data = ts1)
+garch_fit2 <- ugarchfit(spec, data = ts2)
+
+
+# Extract standardized residuals
+resid1 <- garch_fit1@fit$residuals/ garch_fit1@fit$sigma    
+plot.ts(resid1)
+#check eta distribution
+plot(density(resid1))
+mean(resid1)
+var(resid1)
+
+resid2 <- garch_fit2@fit$residuals/ garch_fit2@fit$sigma
+plot(density(resid2))
+mean(resid2)
+var(resid2)
+
+u1 <- pnorm(resid1)
+u2 <- pnorm(resid2)
+cor(u1,u2)
+X=cbind(u1,u2)
+plot.ts(X)
+
+# estimation Gaussian Copula parameters
+loglike_gs=function(rhohat,u) 
+{
+  x <- qnorm(u[, 1])
+  y <- qnorm(u[, 2])
+  n=length(x)
+  log1=-0.5*n*log(1-rhohat^2)
+  log2=-sum(x^2 + y^2)/2
+  log3=sum(2*rhohat*x*y-x^2-y^2)/(2*(1-rhohat^2))
+  
+  logL=log1+log2+log3
+  return(-logL)
+}
+lower_bound <- 0         
+upper_bound <- 1 
+estimated_params=optim(0.1,loglike_gs,u=X,method ="L-BFGS-B", lower = lower_bound, upper = upper_bound,hessian=TRUE)
+estimated_params$par
+#[1] 0.01768145
+
+
+
+# Calculation of dynamic correlation coefficient
+# Suppose we use the sliding window approach
+window_size <- 250  # window size
+cor_dynamic <- sapply(window_size:length(ts1), function(i) {
+  window_resid1 <- resid1[(i-window_size+1):i]
+  window_resid2 <- resid2[(i-window_size+1):i]
+  return(cor(window_resid1, window_resid2))
+})
+
+
+# 动态相关系数的计算
+window_size <- 250
+cor_dynamic <- sapply(window_size:length(ts1), function(i) {
+  window_resid1 <- resid1[(i-window_size+1):i]
+  window_resid2 <- resid2[(i-window_size+1):i]
+  cor_temp <- cor(window_resid1, window_resid2)
+  # Fisher 变换确保相关系数在 [-1, 1]
+  return(cor_temp)
+  #return(0.5 * log((1 + cor_temp) / (1 - cor_temp)))
+})
+plot.ts(cor_dynamic)
+# Convert correlation coefficients back to original scale
+r_inverse<- (exp(2 * cor_dynamic) - 1) / (exp(2 * cor_dynamic) + 1)
+plot.ts(r_inverse)
+#plot.ts(cor_dynamic-r_inverse)
+
+# Simulated dynamic correlation coefficient
+rho_dynamic <- 0.5 + 0.5 * sin(seq(0, 2 * pi, length.out = n))
+plot.ts(rho_dynamic)
+
+# Generating copula data using dynamic correlation coefficients
+copula_data <- sapply(1:n, function(i) {
+  rmvnorm(1, sigma = matrix(c(1, rho_dynamic[i], rho_dynamic[i], 1), 2, 2))
+})
+
+# Dynamic copula data and parameter estimation
+copula_params <- list()
+for (i in 1:length(cor_dynamic)) {
+  u1 <- pnorm(resid1[i:(i + window_size - 1)])
+  u2 <- pnorm(resid2[i:(i + window_size - 1)])
+  copula_fit <- fitCopula(normalCopula(dim = 2, param = cor_dynamic[i]), data = cbind(u1, u2), method = "ml")
+  copula_params[[i]] <- copula_fit@estimate
+}
+
+###############################################################
+###############################################################
+###############################################################
+
+#Step 1: GARCH model fitting
+rm(list=ls())
+library(rugarch)
+#install.packages("copula")
+#library(copula)
+library(mvtnorm)
+
+# simulation GARCH(1,1) data for 2 series
+unigarch=function(w,c,d,sig0,totaltime)
+{
+  eps=sig=0
+  z0=rnorm(1)
+  eps0=z0*sig0^(0.5)
+  sig[1]=w+c*eps0^2+d*sig0
+  eps[1]=sig[1]^(0.5)*rnorm(1)
+  for (i in (2:totaltime)) 
+  {
+    sig[i]=w+c*eps[i-1]^2+d*sig[i-1]
+    eps[i]=sig[i]^(0.5)*rnorm(1)
+  }
+  sigdata=sig
+  epsdata=eps
+  output=cbind(sigdata,epsdata)
+}
+totalt=1200
+burnin=200
+garch1=unigarch(totaltime=totalt,
+              w=0.1994,c=0.5093,d=0.3527,sig0=0.1)
+garch2=unigarch(totaltime=1200,
+             w=0.01,c=0.1,d=0.34,sig0=0.1)
+
+ts1=garch1[((burnin+1):totalt),]
+ts2=garch2[((burnin+1):totalt),]
+plot.ts(ts1)
+plot.ts(ts2)
+cor(ts1[,2],ts2[,2])
+
+
+#fit GARCH 
+spec <- ugarchspec(variance.model = list(model = "sGARCH", garchOrder = c(1, 1)), 
+                   mean.model = list(armaOrder = c(0,0), include.mean = FALSE))
+garch_fit1 <- ugarchfit(spec, data = ts1[,2])
+garch_fit2 <- ugarchfit(spec, data = ts2[,2])
+garch_fit1@fit$coef
+garch_fit2@fit$coef
+resid1 <- garch_fit1@fit$residuals
+resid2 <- garch_fit2@fit$residuals
+
+
+#Step 2: Estimation of dynamic correlation coefficient
+window_size <- 250
+cor_dynamic <- rep(NA, length(resid1) - window_size)
+for (i in (window_size + 1):length(resid1)) {
+  window_resid1 <- resid1[(i-window_size):i]
+  window_resid2 <- resid2[(i-window_size):i]
+  cor_dynamic[i - window_size] <- cor(window_resid1, window_resid2)
+}
+plot.ts(cor_dynamic)
+
+#Step 3: Generate Dynamic Copula Data
+copula_data <- lapply(1:(length(resid1) - window_size), function(i) {
+  norm_copula <- normalCopula(param = cor_dynamic[i], dim = 2)
+  rCopula(window_size, norm_copula)
+})
+
+#Step 4: Copula Parameter Estimation
+# 对每个窗口的 Copula 数据进行参数估计
+copula_params <- lapply(copula_data, function(data) {
+  fitCopula(normalCopula(dim = 2), data = data, method = "ml")
+})
+
+##############################################
+############dynamic 2*2#######################
+##############################################
+
+#2*2
+rm(list=ls())
+sigmoid <- function(x) 1 / (1 + exp(-x))
+generate_dynamic_rho <- function(n, a, b) {
+  t = 1:n  
+  rho_values = sigmoid(a + b * t)  
+  return(rho_values)
+}
+n = 1200  
+a = 0.1   
+b = 0.01  
+dynamic_rho = generate_dynamic_rho(n, a, b)
+plot(dynamic_rho, type = "l", main = "Dynamic Correlation Coefficients Over Time", 
+     ylab = "Correlation Coefficient", xlab = "Time")
+#########2D t copula###############
+# Drawing from the multivariate Student's t-distribution
+library(MASS) # mvrnorm()
+sim.TC <- function(time, rho, nu)
+{
+  dat=matrix(0,time,2)
+  for (i in 1:time) 
+  {
+    mu <- c(0, 0)
+    R <- rbind(c(1,rho[i]),c(rho[i],1))
+    #set.seed(1)
+    z=mvrnorm(1, mu= rep(0, length(mu)), Sigma = R)
+    s=rchisq(time, nu)
+    x=sqrt(nu/s)*z
+    U1_FX1=pt(x[1], df = nu)    #CDF
+    U2_FX2=pt(x[2], df = nu)
+    dat[i,]=cbind(U1_FX1,U2_FX2)
+  }
+  return(dat)
+}
+simT=sim.TC(1000,dynamic_rho,8)
+mean(simT[,1])
+mean(simT[,2])
+var(simT)
+cor(simT)
+library(GGally)
+ggscatmat(data = simT, columns = 1:2) 
+
+##################################################
+########## Dynamic simulation function############
+################################################## 
+rm(list=ls())
+#install.packages("MASS")
+#install.packages("grDevices")
+#install.packages("VGAMextra")
+sigmoid <- function(x) 1 / (1 + exp(-x))
+generate_dynamic_rho <- function(n, a, b) {
+  t = 1:n  
+  rho_values = sigmoid(a + b * t)  
+  return(rho_values)
+}
+n = 1200  
+a = 0.01   
+b = 0.001  
+dynamic_rho = generate_dynamic_rho(n, a, b)
+plot(dynamic_rho, type = "l", 
+     ylab = "Correlation Coefficient", xlab = "Time")
+dev.off()
+dynamic_rho[201]
+main = "Dynamic Correlation Coefficients Over Time"
+
+#library(VGAMextra)
+#library(MASS)
+sim.copula.tGARCH <- function(burnin,time,rho1,
+                              w1,c1,d1,
+                              w2,c2,d2,
+                              nu)
+{
+  totaltime=burnin+time
+  U=matrix(0,totaltime,2)
+  for (i in 1:totaltime) 
+  {
+    mu <- c(0, 0)
+    R <- rbind(c(1,rho1[i]),c(rho1[i],1))
+    #set.seed(1)
+    z=mvrnorm(1, mu= rep(0, length(mu)), Sigma = R)
+    s=rchisq(totaltime, nu)
+    x=sqrt(nu/s)*z
+    U[i,1]=pt(x[1], df = nu)    #CDF
+    U[i,2]=pt(x[2], df = nu)
+  }
+ 
+  unigarch=function(w,c,d,totaltime,nu)
+  {
+    eps=sig=0
+    #set.seed(1)
+    sig0=w/(1-c-d)
+    z0=rt(1,nu)/sqrt(nu/(nu-2))
+    
+    eps0=z0*sig0^(0.5)
+    sig[1]=w+c*eps0^2+d*sig0
+    eps[1]=sig[1]^(0.5)*rt(1,nu)/sqrt(nu/(nu-2))
+    
+    for (i in (2:totaltime)) 
+    {
+      sig[i]=w+c*eps[i-1]^2+d*sig[i-1]
+      eps[i]=sig[i]^(0.5)*rt(1,nu)/sqrt(nu/(nu-2))
+    }
+    sigdata=sig
+    epsdata=eps
+    output=cbind(sigdata,epsdata)
+  }
+  
+  gar1=unigarch(w1,c1,d1,totaltime,nu)
+  gar2=unigarch(w2,c2,d2,totaltime,nu)
+  #install.packages("metRology")
+  library(metRology)
+  dat=matrix(0,nrow = totaltime, ncol = 2)   #simulate data based on Copula
+  for (i in (1:totaltime)) 
+  {
+    dat[i,1] <- qt.scaled(U[i,1],nu)   ####应该q
+    dat[i,2] <- qt.scaled(U[i,2],nu)
+  }
+  
+  garch1=gar1[((burnin+1):totaltime),]
+  garch2=gar2[((burnin+1):totaltime),]
+  copuladata=dat[((burnin+1):totaltime),]
+  #return(copuladata)
+  a <- data.frame(garch1)
+  b <- data.frame(garch2)
+  z <- data.frame(copuladata)
+  e <- list(a,b,z)
+}
+sim.t=sim.copula.tGARCH(burnin=200,time=1000,
+                        rho1 =dynamic_rho,
+                        w1=0.0016,c1=0.0645,d1=0.8854,
+                        w2=0.0009,c2=0.1102,d2=0.7465,
+                        nu=5)
+
+sim=sim.t
+sim.eps1=sim[[1]]$epsdata   #eps variance changed by copula 
+sim.eps2=sim[[2]]$epsdata
+sim.eps=cbind(sim.eps1,sim.eps2)
+library(GGally)
+ggscatmat(data = sim.eps, columns = 1:2) 
+
+var(sim.garch)
+cor(sim.garch)
+sim.data1=sim.garch[,1]
+sim.data2=sim.garch[,2]
+
+sim.copulagarch=sim[[3]]   #copula-garch data
+sim.data1=sim.copulagarch[,1]
+sim.data2=sim.copulagarch[,2]
+
+library(GGally)
+ggscatmat(data = sim[3], columns = 1:2) 
+plot.ts(sim.copulagarch,main="Dynamic Correlation Coefficients TS")
+
+
+
+#############distance
+true_sigma=matrix(0,1000,4)
+true_sigma[,1]=sim[[1]]$sigdata
+plot.ts(true_sigma[,1])
+true_sigma[,4]=sim[[2]]$sigdata
+plot.ts(true_sigma[,4])
+
+dynamic_rho_burn=dynamic_rho[201:1200]
+true_sigma[,2]=(sim[[1]]$sigdata)^(1/2)*(sim[[2]]$sigdata)^(1/2)*dynamic_rho_burn
+
+plot.ts(true_sigma[,2])
+true_sigma[,3]=true_sigma[,2]
+
+
+par(mfrow=c(2,2))
+plot.ts(true_sigma[,1])
+plot.ts(true_sigma[,2])
+plot.ts(true_sigma[,3])
+plot.ts(true_sigma[,4])
+dev.off()
+
+distances=0
+for (i in 1:1000) {
+  matrix1 <- matrix(true_sigma[i,], nrow = 2)
+  matrix2 <- matrix(c(0, 0, 0, 0), nrow = 2)
+  distances[i] <-sqrt(sum((matrix1 - matrix2)^2))
+}
+plot.ts(distances)
+dev.off()
+par(mfrow=c(1,2))
+plot.ts(distances)
+boxplot(distances)
+
+print(distances)
+
+
+
+
+distance
+
+a=distance[,1]
+
+boxplot(a)
+qu=quantile(a,0.75)+(1.5*(quantile(a,0.75)-quantile(a,0.25)))
+a[a>qu] 
+
+plot.ts(a[1:400])
+
+#write.table(distance,"distance between true sigma and sigma hat.csv",sep=",",row.names = FALSE)
+distance=read.csv("distance between true sigma and sigma hat.csv")
+distance=as.matrix(distance)
+
+
+min=qu1=med=mea=qu3=max=sd=0
+for (j in 1:repe)
+{
+  min[j]=min(distance[,j])
+  qu1[j]=quantile(distance[,j],0.25,names=FALSE)
+  med[j]=median(distance[,j])
+  qu3[j]=quantile(distance[,j],0.75,names=FALSE)
+  max[j]=max(distance[,j])
+  sd[j]=sd(distance[,j])
+}
+
+pdf("summary the distance data.pdf")
+input1=data.frame(cbind(min,qu1,med,qu3,max,sd))
+boxplot(input1,xlab="summary the distance data",ylab="distance",col=c(2:7))
+dev.off()
+
+pdf("distance plot of variance matrix.pdf")
+par(mfrow=c(2,1))
+plot.ts(distance1,main="Distance",ylab="distance for covatiance",ylim = c(0,0.03),col=1)
+lines(x=c(1:1000),distance2,col=2)
+lines(x=c(1:1000),distance3,col=3)
+lines(x=c(1:1000),distance4,col=4)
+lines(x=c(1:1000),distance5,col=5)
+legend("topleft", legend = c("sequence 1","sequence 2","sequence 3","sequence 4","sequence 5"),lty = 1, col = 1:5)
+abline(h=0,lty=2,lwd=2,col=9)
+
+
+
+
+
+
+##estimation
+garch_likelihood_constrained <- function(theta, returns) {
+  omega <- pmax(pmin(theta[1],Inf), 0)
+  #pmax(pmin(x, upper_bound), lower_bound)
+  beta <- pmax(pmin(theta[3], 1), 0)
+  alpha <- pmax(pmin(theta[2], pmin(1-beta, 1)), 0)
+  
+  T <- length(returns)
+  sigma2 <- numeric(T)
+  sigma2[1] <-var(returns)
+  for (t in 2:T) {
+    sigma2[t] <- omega+alpha*returns[t-1]^2+beta*sigma2[t-1]
+  }
+  log_likelihood <- -0.5 * (T * log(2 * pi) + sum(log(sigma2)) + sum(returns^2 / sigma2))
+  return(-log_likelihood)
+}
+
+#########update
+garch_likelihood_constrained <- function(theta, returns) {
+  omega <- theta[1]
+  alpha <- theta[2]
+  beta <- theta[3]
+  # Check if parameters are within acceptable range
+  if (omega > 0 || alpha > 0 || beta > 0 || alpha + beta < 1) {
+  T <- length(returns)
+  sigma2 <- numeric(T)
+  sigma2[1] <- var(returns)
+  for (t in 2:T) {
+    sigma2[t] <- omega + alpha * returns[t-1]^2 + beta * sigma2[t-1]
+    if (sigma2[t] <= 0) {
+      return(.Machine$double.xmax)
+    }
+  }
+  log_likelihood <- -0.5 * (T * log(2 * pi) + sum(log(sigma2)) + sum(returns^2 / sigma2))
+  }
+  return(-log_likelihood) # Negative because 'optim' minimizes
+}
+
+
+initial_guess <- c(0.01, 0.1, 0.1) 
+lower_bound <- c(1e-6, 1e-4, 1e-4)     
+upper_bound <- c(1, 1-1e-4, 1-1e-4)   
+optim_result1 <- optim(initial_guess,garch_likelihood_constrained, returns=sim.data1, 
+                       method = "L-BFGS-B", lower = lower_bound, upper = upper_bound,
+                       control = list(maxit = 10000),hessian=TRUE)
+estimated_params1=optim_result1$par
+
+optim_result2 <- optim(initial_guess,garch_likelihood_constrained, returns=sim.data2, 
+                       method = "L-BFGS-B", lower = lower_bound, upper = upper_bound,
+                       control = list(maxit = 10000),hessian=TRUE)
+estimated_params2=optim_result2$par
+
+# Check if the optimization was successful
+if(optim_result1$convergence == 0) {
+  cat("Optimization successful. Estimated parameters:\n")
+  print(optim_result1$par)
+} else {
+  cat("Optimization failed. Code:", optim_result1$convergence, "\n")
+}
+
+library(rugarch)
+r.garch <- ugarchspec(mean.model = list(armaOrder = c(0,0),
+                                        include.mean = FALSE),
+                      variance.model = list(garchOrder = c(1, 1)))  # Fit garch(1,1) 
+
+spec <- ugarchspec(variance.model = list(garchOrder = c(1, 1)),
+                   mean.model = list(armaOrder = c(0, 0), include.mean = FALSE),
+                   distribution.model = "std")
+sim.data1=residuals(fit1)
+sim.data2=residuals(fit2)
+fit1 = ugarchfit(data = sim.data1, spec = spec) 
+fit2 = ugarchfit(data = sim.data2, spec = spec)   
+   
+fit1@fit$se.coef
+fit2 = ugarchfit(data = sim.data2, spec = r.garch)       
+fit2@fit$se.coef
+
+
+######Function multiStart
+#install.packages("BB")
+library(BB)
+pmat <- matrix(runif(30,0,0.5), 10, 3)  # 20 starting values each of length 3 
+ans1 <- multiStart(par=pmat, fn=garch_likelihood_constrained,
+                   lower = lower_bound, upper = upper_bound,
+                   returns=sim.data1,action="optimize")
+ans1$par
+estimated_params1=colMeans(ans1$par)
+ans2 <- multiStart(par=pmat, fn=garch_likelihood_constrained,
+                   lower = lower_bound, upper = upper_bound,
+                   returns=sim.data2,action="optimize")
+ans2$par
+estimated_params2=colMeans(ans2$par)
+
+
+
+####
+#generate sigmahat_t1,sigmahat_t2,sigmahat_t2 based on estimation
+T <- length(sim.data1)
+sigmahat2_1=sigmahat2_2=numeric(T)
+sigmahat2_1[1] <-var(sim.data1)
+sigmahat2_2[1] <-var(sim.data2)
+
+
+for (t in 2:T) 
+{
+  sigmahat2_1[t] <- estimated_params1[1]+estimated_params1[2]*sim.data1[t-1]^2+
+    estimated_params1[3]*sigmahat2_1[t-1]
+  sigmahat2_2[t] <- estimated_params2[1]+estimated_params2[2]*sim.data2[t-1]^2+
+    estimated_params2[3]*sigmahat2_2[t-1]
+}
+
+
+dat=cbind(sim.data1,sim.data2)
+plot.ts(dat)
+sighat=cbind(sigmahat2_1,sigmahat2_2)
+plot.ts(sighat)
+
+###add copula
+X=matrix(0,nrow = length(dat[,1]), ncol = 2)
+for (i in 1:length(dat[,1])) 
+{
+  X[i,1] <- pnorm(dat[i,1],mean=0, sd=sighat[i,1]^(0.5))   #应该p distribution function
+  X[i,2] <- pnorm(dat[i,2],mean=0, sd=sighat[i,2]^(0.5))
+}
+#plot(density(X[,1]))
+#plot(density(X[,2]))
+
+
+#plot(density(qnorm(X[, 1],0,1)))
+#plot(density(qnorm(X[, 2],0,1)))
+
+cor(X)
+#> cor(X)
+#[,1]      [,2]
+#[1,] 1.0000000 0.9422374
+#[2,] 0.9422374 1.0000000
+
+ll_multC=function(theta,X) {
+  n <- nrow(X)
+  k <- ncol(X)
+  a <- qnorm(X[, 1],0,1)
+  b <- qnorm(X[, 2],0,1)
+  c <- qnorm(X[, 3],0,1)
+  X=cbind(a,b,c)
+  
+  # def Sigma
+  #Sigma is correlation matrix
+  Sigma.diag <- theta[1:k]
+  Sigma.offd <- theta[(k+1):length(theta)]
+  Sigma <- matrix(NA, k, k)
+  Sigma[upper.tri(Sigma)] <- Sigma.offd
+  Sigma <- t(Sigma)
+  Sigma[upper.tri(Sigma)] <- Sigma.offd
+  diag(Sigma) <- Sigma.diag
+  #compute summation 
+  s=0
+  for (i in 1:n)
+  {
+    s[i]=t(X[i,])%*% (solve(Sigma)) %*% (X[i,])+t(X[i,])%*% (-diag(k)) %*% (X[i,])
+  }
+  # compute log likelihood
+  logl1=-0.5*n*log(det(Sigma)) 
+  logl2=-0.5*sum(s)
+  logl=logl1+logl2
+  return(-logl)
+}
+
+ll_multC(pars.init,X)
+
+pars.init=0.1
+lower_bound <--1   
+upper_bound <- 1
+o=optim(pars.init,ll_multC,X=X,hessian=FALSE,method = "Brent",
+        lower = lower_bound, upper = upper_bound)
+o$par
+
+
+
+
+
+
+##################################################################
+#3*3
+sigmoid <- function(x) 1 / (1 + exp(-x))
+generate_dynamic_rho_matrix <- function(n, a, b,c,d) {
+  dynamic_rho_list = list()  
+  
+  for (t in 1:n) {
+    rho1 = sigmoid(a + b * t)
+    rho2 = sigmoid(c + d * t)
+    
+    rho_matrix = matrix(1, 3, 3) 
+    rho_matrix[upper.tri(rho_matrix)] = rho1 
+    rho_matrix[lower.tri(rho_matrix)] = rho2 
+    dynamic_rho_list[[t]] = rho_matrix
+  }
+  return(dynamic_rho_list)
+}
+n = 1000  
+a = 0.1   
+b = 0.01  
+c = 0.3   
+d = 0.04  
+dynamic_rho_matrices = generate_dynamic_rho_matrix(n, a, b,c,d)
+# 查看第一个时间点的相关系数矩阵
+dynamic_rho_matrices[[1]]
+
+
+#########################################################
+########### Normal GARCH- Normal Copula #################
+#########################################################
+##############################################
+#############my 2D copula GARCH###############
+##############################################
+
+################ 2D constant rho##########################
+rm(list=ls())
+#install.packages("MASS")
+#install.packages("grDevices")
+library(MASS)
+sim.copulaGARCH <- function(burnin,time,rho1,
+                            w1,c1,d1,
+                            w2,c2,d2,
+                            sig0)
+{ 
+  R<- matrix(c(1, rho1,                # Correlation matrix
+               rho1, 1), nrow = 2)
+  totaltime=burnin+time
+  #set.seed(1)
+  z <- mvrnorm(totaltime, mu=c(0,0), Sigma = R)
+  #generate U_tk
+  U1_FX1=pnorm(z[,1])
+  U2_FX2=pnorm(z[,2])
+  U=cbind(U1_FX1,U2_FX2)
+  
+  unigarch=function(w,c,d,sig0,totaltime)
+  {
+    #set.seed(1)
+    z0<- rnorm(1)
+    eps0=z0*sig0^(0.5)
+    eps=sig=0
+    sig[1]=w+c*eps0^2+d*sig0
+    eps[1]=sig[1]^(0.5)*rnorm(1)
+    for (i in (2:totaltime)) 
+    {
+      sig[i]=w+c*eps[i-1]^2+d*sig[i-1]
+      eps[i]=sig[i]^(0.5)*rnorm(1)
+    }
+    sigdata=sig
+    epsdata=eps
+    output=cbind(sigdata,epsdata)
+  }
+  gar1=unigarch(w1,c1,d1,sig0,totaltime)
+  gar2=unigarch(w2,c2,d2,sig0,totaltime)
+  
+  dat=matrix(0,nrow = totaltime, ncol = 2)   #simulate data based on Copula
+  for (i in (1:totaltime)) 
+  {
+    dat[i,1] <- qnorm(U[i,1],mean=0, sd=gar1[i,1]^(0.5))   ####应该q
+    dat[i,2] <- qnorm(U[i,2],mean=0, sd=gar2[i,1]^(0.5))
+  }
+  garch1=gar1[((burnin+1):totaltime),]
+  garch2=gar2[((burnin+1):totaltime),]
+  copuladata=dat[((burnin+1):totaltime),]
+  #return(copuladata)
+  a <- data.frame(garch1)
+  b <- data.frame(garch2)
+  z <- data.frame(copuladata)
+  e <- list(a,b,z)
+}
+sim=sim.copulaGARCH(burnin=200,time=1000,
+                    rho1 =0.7,
+                    w1=0.0008,c1=0.121,d1=0.825,
+                    w2=0.1994,c2=0.5093,d2=0.3527,
+                    sig0=0.01)
+
+sim.data1=sim[[1]]$epsdata
+sim.data2=sim[[2]]$epsdata
+sim.copulagarch=sim[[3]]
+
+#pairs.panels(sim.copulagarch)
+library(GGally)
+ggscatmat(data = sim.copulagarch, columns = 1:2) 
+
+
+############################################
+##########estimation own code###############
+############################################
+
+sim.copulagarch=sim[[3]]   #copula-garch data
+sim.data1=sim.copulagarch[,1]
+sim.data2=sim.copulagarch[,2]
+
+########garch estimation
+garch_likelihood_constrained <- function(theta, returns) {
+  omega <- pmax(pmin(theta[1],1), 0)
+  beta <- pmax(pmin(theta[3], 1), 0)
+  alpha <- pmax(pmin(theta[2], 1), 0)
+  su=beta+alpha
+  su <- pmax(pmin(su, 1), 0)
+  
+  T <- length(returns)
+  sigma2 <- numeric(T)
+  sigma2[1] <-var(returns)
+  for (t in 2:T) {
+    sigma2[t] <- omega+alpha*returns[t-1]^2+beta*sigma2[t-1]
+  }
+  log_likelihood <- -0.5 * (T * log(2 * pi) + sum(log(sigma2)) + sum(returns^2 / sigma2))
+  return(-log_likelihood)
+}
+
+########
+initial_guess <- c(0.00001, 0.001, 0.001)  #initial value(important)
+lower_bound <-  c(0.00001, 0.001, 0.001)      
+upper_bound <- c(1,1,1) 
+optim_result1 <- optim(initial_guess,garch_likelihood_constrained, returns=sim.data1, method = "L-BFGS-B", lower = lower_bound, upper = upper_bound,hessian=TRUE)
+optim_result2 <- optim(initial_guess,garch_likelihood_constrained, returns=sim.data2, method = "L-BFGS-B", lower = lower_bound, upper = upper_bound,hessian=TRUE)
+
+estimated_params1 <- optim_result1$par 
+estimated_params2 <- optim_result2$par 
+
+estimated_params1
+estimated_params2
+
+#> estimated_params1
+#[1] 0.003208034 0.117180271 0.673756306
+#> estimated_params2
+#[1] 0.1950689 0.3169993 0.5908452
+
+
+#generate sigmahat_t1,sigmahat_t2,sigmahat_t2 based on estimation
+T <- length(sim.data1)
+sigmahat2_1=sigmahat2_2=numeric(T)
+sigmahat2_1[1] <-var(sim.data1)
+sigmahat2_2[1] <-var(sim.data2)
+for (t in 2:T) 
+{
+  sigmahat2_1[t] <- estimated_params1[1]+estimated_params1[2]*sim.data1[t-1]^2+
+    estimated_params1[3]*sigmahat2_1[t-1]
+  sigmahat2_2[t] <- estimated_params2[1]+estimated_params2[2]*sim.data2[t-1]^2+
+    estimated_params2[3]*sigmahat2_2[t-1]
+}
+
+dat=cbind(sim.data1,sim.data2)
+plot.ts(dat)
+sighat=cbind(sigmahat2_1,sigmahat2_2)
+plot.ts(sighat)
+
+###add copula
+X=matrix(0,nrow = length(dat[,1]), ncol = 2)
+for (i in 1:length(dat[,1])) 
+{
+  X[i,1] <- pnorm(dat[i,1],mean=0, sd=sighat[i,1]^(0.5))   #应该p distribution function
+  X[i,2] <- pnorm(dat[i,2],mean=0, sd=sighat[i,2]^(0.5))
+}
+
+
+cor(X)
+#> cor(X)
+#[,1]      [,2]
+#[1,] 1.0000000 0.6702193
+#[2,] 0.6702193 1.0000000
+
+ll_multC=function(theta,X) {
+  n <- nrow(X)
+  k <- ncol(X)
+  a <- qnorm(X[, 1],0,1)
+  b <- qnorm(X[, 2],0,1)
+  X=cbind(a,b)
+  
+  # def Sigma
+  #Sigma is correlation matrix
+  Sigma.diag <- c(1,1)
+  k <- 2
+  Sigma.offd <- theta[1]
+  Sigma <- matrix(NA, k, k)
+  Sigma[upper.tri(Sigma)] <- Sigma.offd
+  Sigma <- t(Sigma)
+  Sigma[upper.tri(Sigma)] <- Sigma.offd
+  diag(Sigma) <- Sigma.diag
+  #compute summation 
+  s=0
+  for (i in 1:n)
+  {
+    s[i]=t(X[i,])%*% (solve(Sigma)) %*% (X[i,])+t(X[i,])%*% (-diag(k)) %*% (X[i,])
+  }
+  logl1=-0.5*n*log(det(Sigma)) 
+  logl2=-0.5*sum(s)
+  logl=logl1+logl2
+  return(-logl)
+}
+pars.init <- c(sig_ij=0.1)  # initial parameter values
+lower_bound <- c(-1)         
+upper_bound <- c(1)  
+o=optim(pars.init,ll_multC,X=X,method = "Brent",hessian=FALSE,lower = lower_bound, upper = upper_bound)
+o$par
+
+#> o$par
+#sig_ij 
+#0.6594531 
+
+
+
+#########################################################
+########### Normal GARCH- Normal Copula #################
+#########################################################
+##############################################
+#############my 2D copula GARCH###############
+##############################################
+
+################ 2D dynamic rho##########################
+rm(list=ls())
+#install.packages("MASS")
+#install.packages("grDevices")
+library(MASS)
+sim.copulaGARCH <- function(burnin,time,rho1,
+                            w1,c1,d1,
+                            w2,c2,d2,
+                            sig0)
+{ 
+  R<- matrix(c(1, rho1,                # Correlation matrix
+               rho1, 1), nrow = 2)
+  totaltime=burnin+time
+  #set.seed(1)
+  z <- mvrnorm(totaltime, mu=c(0,0), Sigma = R)
+  #generate U_tk
+  U1_FX1=pnorm(z[,1])
+  U2_FX2=pnorm(z[,2])
+  U=cbind(U1_FX1,U2_FX2)
+  
+  unigarch=function(w,c,d,sig0,totaltime)
+  {
+    #set.seed(1)
+    z0<- rnorm(1)
+    eps0=z0*sig0^(0.5)
+    eps=sig=0
+    sig[1]=w+c*eps0^2+d*sig0
+    eps[1]=sig[1]^(0.5)*rnorm(1)
+    for (i in (2:totaltime)) 
+    {
+      sig[i]=w+c*eps[i-1]^2+d*sig[i-1]
+      eps[i]=sig[i]^(0.5)*rnorm(1)
+    }
+    sigdata=sig
+    epsdata=eps
+    output=cbind(sigdata,epsdata)
+  }
+  gar1=unigarch(w1,c1,d1,sig0,totaltime)
+  gar2=unigarch(w2,c2,d2,sig0,totaltime)
+  
+  dat=matrix(0,nrow = totaltime, ncol = 2)   #simulate data based on Copula
+  for (i in (1:totaltime)) 
+  {
+    dat[i,1] <- qnorm(U[i,1],mean=0, sd=gar1[i,1]^(0.5))   ####应该q
+    dat[i,2] <- qnorm(U[i,2],mean=0, sd=gar2[i,1]^(0.5))
+  }
+  garch1=gar1[((burnin+1):totaltime),]
+  garch2=gar2[((burnin+1):totaltime),]
+  copuladata=dat[((burnin+1):totaltime),]
+  #return(copuladata)
+  a <- data.frame(garch1)
+  b <- data.frame(garch2)
+  z <- data.frame(copuladata)
+  e <- list(a,b,z)
+}
+sim=sim.copulaGARCH(burnin=200,time=1000,
+                    rho1 =0.7,
+                    w1=0.0008,c1=0.121,d1=0.825,
+                    w2=0.1994,c2=0.5093,d2=0.3527,
+                    sig0=0.01)
+
+sim.data1=sim[[1]]$epsdata
+sim.data2=sim[[2]]$epsdata
+sim.copulagarch=sim[[3]]
+
+pairs.panels(sim.copulagarch)
+library(GGally)
+ggscatmat(data = sim.copulagarch, columns = 1:2) 
+
+
+############################################
+##########estimation own code###############
+############################################
+
+sim.copulagarch=sim[[3]]   #copula-garch data
+sim.data1=sim.copulagarch[,1]
+sim.data2=sim.copulagarch[,2]
+
+########garch estimation
+garch_likelihood_constrained <- function(theta, returns) {
+  omega <- pmax(pmin(theta[1],1), 0)
+  beta <- pmax(pmin(theta[3], 1), 0)
+  alpha <- pmax(pmin(theta[2], 1), 0)
+  su=beta+alpha
+  su <- pmax(pmin(su, 1), 0)
+  
+  T <- length(returns)
+  sigma2 <- numeric(T)
+  sigma2[1] <-var(returns)
+  for (t in 2:T) {
+    sigma2[t] <- omega+alpha*returns[t-1]^2+beta*sigma2[t-1]
+  }
+  log_likelihood <- -0.5 * (T * log(2 * pi) + sum(log(sigma2)) + sum(returns^2 / sigma2))
+  return(-log_likelihood)
+}
+
+########
+initial_guess <- c(0.00001, 0.001, 0.001)  #initial value(important)
+lower_bound <-  c(0.00001, 0.001, 0.001)      
+upper_bound <- c(1,1,1) 
+optim_result1 <- optim(initial_guess,garch_likelihood_constrained, returns=sim.data1, method = "L-BFGS-B", lower = lower_bound, upper = upper_bound,hessian=TRUE)
+optim_result2 <- optim(initial_guess,garch_likelihood_constrained, returns=sim.data2, method = "L-BFGS-B", lower = lower_bound, upper = upper_bound,hessian=TRUE)
+
+estimated_params1 <- optim_result1$par 
+estimated_params2 <- optim_result2$par 
+
+estimated_params1
+estimated_params2
+
+#> estimated_params1
+#[1] 0.003208034 0.117180271 0.673756306
+#> estimated_params2
+#[1] 0.1950689 0.3169993 0.5908452
+
+
+#generate sigmahat_t1,sigmahat_t2,sigmahat_t2 based on estimation
+T <- length(sim.data1)
+sigmahat2_1=sigmahat2_2=numeric(T)
+sigmahat2_1[1] <-var(sim.data1)
+sigmahat2_2[1] <-var(sim.data2)
+for (t in 2:T) 
+{
+  sigmahat2_1[t] <- estimated_params1[1]+estimated_params1[2]*sim.data1[t-1]^2+
+    estimated_params1[3]*sigmahat2_1[t-1]
+  sigmahat2_2[t] <- estimated_params2[1]+estimated_params2[2]*sim.data2[t-1]^2+
+    estimated_params2[3]*sigmahat2_2[t-1]
+}
+
+dat=cbind(sim.data1,sim.data2)
+plot.ts(dat)
+sighat=cbind(sigmahat2_1,sigmahat2_2)
+plot.ts(sighat)
+
+###add copula
+X=matrix(0,nrow = length(dat[,1]), ncol = 2)
+for (i in 1:length(dat[,1])) 
+{
+  X[i,1] <- pnorm(dat[i,1],mean=0, sd=sighat[i,1]^(0.5))   #应该p distribution function
+  X[i,2] <- pnorm(dat[i,2],mean=0, sd=sighat[i,2]^(0.5))
+}
+
+
+cor(X)
+#> cor(X)
+#[,1]      [,2]
+#[1,] 1.0000000 0.6702193
+#[2,] 0.6702193 1.0000000
+
+ll_multC=function(theta,X) {
+  n <- nrow(X)
+  k <- ncol(X)
+  a <- qnorm(X[, 1],0,1)
+  b <- qnorm(X[, 2],0,1)
+  X=cbind(a,b)
+  
+  # def Sigma
+  #Sigma is correlation matrix
+  Sigma.diag <- c(1,1)
+  k <- 2
+  Sigma.offd <- theta[1]
+  Sigma <- matrix(NA, k, k)
+  Sigma[upper.tri(Sigma)] <- Sigma.offd
+  Sigma <- t(Sigma)
+  Sigma[upper.tri(Sigma)] <- Sigma.offd
+  diag(Sigma) <- Sigma.diag
+  #compute summation 
+  s=0
+  for (i in 1:n)
+  {
+    s[i]=t(X[i,])%*% (solve(Sigma)) %*% (X[i,])+t(X[i,])%*% (-diag(k)) %*% (X[i,])
+  }
+  logl1=-0.5*n*log(det(Sigma)) 
+  logl2=-0.5*sum(s)
+  logl=logl1+logl2
+  return(-logl)
+}
+pars.init <- c(sig_ij=0.1)  # initial parameter values
+lower_bound <- c(-1)         
+upper_bound <- c(1)  
+o=optim(pars.init,ll_multC,X=X,method = "Brent",hessian=FALSE,lower = lower_bound, upper = upper_bound)
+o$par
+
+#> o$par
+#sig_ij 
+#0.6594531 
+
+
