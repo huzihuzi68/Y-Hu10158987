@@ -1,0 +1,2730 @@
+#section 4.2
+#section 4.2.1
+#T=1000,R=500
+rm(list=ls())
+repe=500
+time=1200
+xx2=matrix(0,time,2*repe)
+#install.packages("matrixcalc")
+library(matrixcalc)
+sigma=matrix(0,time,2^2*repe)
+m <- 1
+repeat
+{
+#CTC=lower*upper
+#chol is upper
+C=matrix(c(0.004,0,0.005,0.003), nrow = 2, ncol = 2) #upper
+CTC=t(C)%*%C
+C=chol(CTC)
+A=matrix(c(0.254,0.04,-0.004,0.332),2, ncol = 2)
+B=matrix(c(0.941,-0.019,0.023,0.864),2,2)
+#sigma.diag1=diag(c(1, 1))
+#install.packages("MASS")
+library(MASS)
+#set.seed(2)
+eta1=mvrnorm(n = 1, mu=rep(0, 2),Sigma=diag(c(1, 1)))
+sigma1=CTC
+svdH = svd(sigma1)
+sqrt.sigma1 = svdH$u %*% diag(sqrt(svdH$d)) %*% t(svdH$v)
+#res=eigen(sigma1)
+#m1=res$vectors
+#dd=diag(sqrt(res$values))
+#m2=matrix.inverse(m1)
+#sqrt.sigma1=m1%*%dd%*%m2
+#set.seed(2)
+eta1=mvrnorm(n = 1, mu= rep(0, 2),Sigma=diag(c(1, 1)))
+u1=sqrt.sigma1%*%eta1
+xx2[1,((2*m-1):(2*m))]=u1
+sigma[1,((4*m-3):(4*m))]=as.vector(sigma1)
+for (i in (2:time))
+{
+sigma2=CTC+t(A)%*%u1%*%t(u1)%*%A+t(B)%*%sigma1%*%B
+#res=eigen(sigma2)
+#m1=res$vectors
+#for (k in 1:2){
+#if(res$values[k]<=0) stop("eigenvalue non-positive")}
+#dd=diag(sqrt(res$values))
+#m2=matrix.inverse(m1)
+#sqrt.sigma2=m1%*%dd%*%m2
+svdH = svd(sigma2)
+sqrt.sigma2 = svdH$u %*% diag(sqrt(svdH$d)) %*% t(svdH$v)
+eta2=mvrnorm(n = 1, mu=rep(0, 2), Sigma=diag(c(1, 1)))
+u2=sqrt.sigma2%*%eta2
+xx2[i,((2*m-1):(2*m))]=u2
+sigma[i,((4*m-3):(4*m))]=as.vector(sigma2)
+sigma1=sigma2
+u1=u2
+}
+# print(m)
+m = m+1
+if (m == repe+1)
+{
+break
+}
+}
+burn=200
+real_sigma=sigma[((burn+1):time),]
+real_xx2=xx2[((burn+1):time),]
+#xx2=real_xx2
+#length(sigma[,1]) #[1] 1000
+write.table(real_xx2,"2D real series with repetition.csv",sep=",",row.names = FALSE)
+xx2=read.csv("2D real series with repetition.csv")
+xx2=as.matrix(xx2)
+write.table(real_sigma,"2D real Sigma at different time with repetition.csv",sep=",",row.names = FALSE)
+true_sigma=read.csv("2D real Sigma at different time with repetition.csv")
+true_sigma=as.matrix(true_sigma)
+#########summary 2 dataset
+summary(xx2[,1])
+var(xx2[,1])
+summary(xx2[,49])
+var(xx2[,49])
+summary(xx2[,2])
+var(xx2[,2])
+summary(xx2[,50])
+var(xx2[,50])
+qqnorm(xx2[,111:112])
+qqline(xx2[,111:112])
+#acf plot
+pdf("Acf_data1.pdf")
+#par(mfrow=c(2,1))
+acf(xx2[,1:2],lag.max = 15)
+#acf(xx2[,49:50],lag.max = 15)
+dev.off()
+pdf("Acf_squared data1.pdf")
+par(mfrow=c(1,2))
+squ.residual1=xx2[,1:2]^2
+acf(squ.residual1,lag.max = 15)
+#squ.residual2=xx2[,49:50]^2
+#acf(squ.residual2,lag.max = 15)
+dev.off()
+
+pdf("simulation_series.pdf")
+par(mfrow=c(2,1))
+plot.ts(xx2[,1],main="Time series of variable 1",ylab="V1",xlab="time",ylim = c(-0.08,0.08),col=1)
+lines(x=c(1:1000),xx2[,49],col=2)
+#legend("bottomright", legend = c("data set 1","data set 2"),lty = 1, col = 1:2,cex = 0.2)
+plot.ts(xx2[,2],main="Time series of variable 2",ylab="V2",xlab="time",ylim = c(-0.08,0.08),col=1)
+lines(x=c(1:1000),xx2[,50],col=2)
+#legend("bottomright", legend = c("data set 1","data set 2"),lty = 1, col = 1:2,cex = 0.5)
+dev.off()
+#section 4.2.2
+install.packages("mgarchBEKK")
+library(mgarchBEKK)
+library(tseries)
+library(mvtnorm)
+realT=1000
+sigma_hat=matrix(0,realT,4)
+resbs= BEKK(xx2[,1:2], order=c(1,1))
+for (i in 1:realT)
+{
+sigma_hat[i,1:4]=resbs$H.estimated[[i]] ##estimate sigma
+}
+#series_hat[,((2*e-1):(2*e))]=resbs$eps #original data
+#plot(density(resbs$residuals[[2]])) #residuals is eta
+#var((resbs$residuals[[2]]))
+#mean((resbs$residuals[[2]]))
+C=resbs$est.params$‘1‘
+A=resbs$est.params$‘2‘
+B=resbs$est.params$‘3‘
+#section 4.2.3 model diagonostics
+#a.covariance stationary
+C=resbs$est.params$‘1‘
+A=resbs$est.params$‘2‘
+B=resbs$est.params$‘3‘
+K1=kronecker(A, A)
+K2=kronecker(B, B)
+K=K1+K2
+eigen(K)
+###output
+#> eigen(K)
+#eigen() decomposition
+#$values
+#[1] 0.3124309+0.0000000i 0.3052637+0.0000000i 0.2261171+0.0934506i
+#[4] 0.2261171-0.0934506i
+####b.positive definit check
+#BEKK(1,1) for non-standardized data positive definite check
+a= matrix(0,realT, 2)
+a1=eigen(matrix(sigma_hat[i,1:4],2,2))$‘values‘
+a[1,]=a1
+i=2
+while(i<=realT)
+{
+a1=eigen(matrix(sigma_hat[i,1:4],2,2))$‘values‘
+a[i,]=a1
+i = i + 1
+}
+a
+plot.ts(a[,1],ylim = c(0,0.002),ylab="eigen values", main="")
+lines(x=c(1:realT), y=a[,2],col=3)
+lines(x=c(1:realT), y=replicate(realT, 0),col=5)
+####c.check eta
+#diagnostics for eta hat(simulate)
+xs=matrix(0,realT,2)
+xx1=xx2[,1:2]
+for(i in 1:realT)
+{
+e=resbs$H.estimated[[i]]
+eei=eigen(e)
+mm1=eei$vectors
+dd1=diag(1/sqrt(eei$values))
+mm2=t(mm1)
+sqrt.sigma_2=mm1%*%dd1%*%mm2
+eta1=sqrt.sigma_2%*%matrix(xx1[i,],2,1)
+xs[i,]=eta1
+}
+#xs:eta hat
+xss=0
+for (i in (1:realT)){
+xss[i]=0
+for (j in (1:2)){
+xss[i]=xss[i]+xs[i,j]^2
+}}
+hist(xss, freq=F, breaks =16,main="")
+x1=seq(from=0, to=40, length.out=500)
+dx1=dchisq(x1, df=2)
+lines(x1, dx1, col="red")
+pdf("diagnostics.pdf")
+par(mfrow=c(2,2))
+plot.ts(a[,1],ylim = c(0,0.002),ylab="eigen values", main="")
+lines(x=c(1:realT), y=a[,2],col=3)
+lines(x=c(1:realT), y=replicate(realT, 0),col=5)
+hist(xss, freq=F, breaks =16,main="")
+x1=seq(from=0, to=40, length.out=500)
+dx1=dchisq(x1, df=2)
+lines(x1, dx1, col="red")
+qqnorm(xs[,1])
+abline(a=0, b=1, col="red")
+qqnorm(xs[,2])
+abline(a=0, b=1, col="red")
+dev.off()
+#4.2.4
+#install.packages("shapes")
+library(shapes)
+distance=0
+for (i in 1: realT)
+{
+distance[i]=distcov(matrix(true_sigma[i,1:4],2,2),matrix(sigma_hat[i,1:4],2,2),method="Procrustes")
+}
+pdf("summary_the_distance_one_observation.pdf")
+par(mfrow=c(1,2))
+plot.ts(distance)
+boxplot(distance)
+dev.off()
+
+#section 5
+#5.1
+#case 1
+C=matrix(c(0.004,0,0.005,0.003), nrow = 2, ncol = 2) #upper
+CTC=t(C)%*%C
+C=chol(CTC)
+A=matrix(c(0.254,0.04,-0.004,0.332),2, ncol = 2)
+B=matrix(c(0.941,-0.019,0.023,0.864),2,2)
+CC=read.csv("Estimation_C.csv")
+CC=as.matrix(CC)
+AA=read.csv("Estimation_A.csv")
+AA=as.matrix(AA)
+BB=read.csv("Estimation_B.csv")
+BB=as.matrix(BB)
+sigma_hat=read.csv("2D_Sigma_hat.csv")
+sigma_hat=as.matrix(sigma_hat)
+#C
+pdf("density_C.pdf")
+par(mfrow=c(2,2))
+plot(density(CC[,1]))
+abline(v=C[1,1],col=2)
+abline(v=-C[1,1],col=3)
+plot(density(CC[,3]))
+abline(v= C[1,2],col=2)
+abline(v= -C[1,2],col=3)
+plot(rep(0,100),rep(0,100),type="l",xlim=c(-1,1),ylim=c(0,2),xlab = "all 0 values")
+abline(v=0,col=2)
+plot(density(CC[,4]))
+abline(v=C[2,2],col=2)
+abline(v=-C[2,2],col=3)
+dev.off()
+pdf("density_abs_C.pdf")
+par(mfrow=c(2,2))
+x=seq(mean(abs(CC[,1]))-0.02,mean(abs(CC[,1]))+0.02,length=10000)
+y=dnorm(x,mean=mean(abs(CC[,1])),sd=sd(abs(CC[,1])))
+plot(x,y,type="l",ylim=c(0,300),col="3")
+lines(density(abs(CC[,1])))
+abline(v=C[1,1],col=2)
+x=seq(mean(abs(CC[,3]))-0.02,mean(abs(CC[,3]))+0.02,length=10000)
+y=dnorm(x,mean=mean(abs(CC[,3])),sd=sd(abs(CC[,3])))
+plot(x,y,type="l",ylim=c(0,300),col="3")
+lines(density(abs(CC[,3])))
+abline(v=C[1,2],col=2)
+plot(rep(0,100),rep(0,100),type="l",xlim=c(-1,1),ylim=c(0,2),xlab = "all 0 values")
+abline(v=0,col=2)
+x=seq(mean(abs(CC[,4]))-0.02,mean(abs(CC[,4]))+0.02,length=10000)
+y=dnorm(x,mean=mean(abs(CC[,4])),sd=sd(abs(CC[,4])))
+plot(x,y,type="l",ylim=c(0,500),col="3")
+lines(density(abs(CC[,4])))
+abline(v=C[2,2],col=2)
+dev.off()
+repe=500
+d=2
+PC=PA=PB=matrix(0,d,d*repe) #combination of parameter matrix
+for (i in 1:repe)
+{
+PC[,((d*i-1):(d*i))]=(t(matrix(CC[i,],d,d)))%*%(matrix(CC[i,],d,d))
+PA[,((d*i-1):(d*i))]=(t(matrix(AA[i,],d,d)))%*%(matrix(AA[i,],d,d))
+PB[,((d*i-1):(d*i))]=(t(matrix(BB[i,],d,d)))%*%(matrix(BB[i,],d,d))
+}
+CTC=ATA=BTB=matrix(0,repe,d^2)
+for (i in 1:repe)
+{
+CTC[i,]=as.vector(PC[,((d*i-1):(d*i))])
+ATA[i,]=as.vector(PA[,((d*i-1):(d*i))])
+BTB[i,]=as.vector(PB[,((d*i-1):(d*i))])
+}
+Csqu=t(C)%*%C
+pdf("density_CTC.pdf")
+par(mfrow=c(2,2))
+plot(density(CTC[,1]))
+abline(v=Csqu[1,1],col=2)
+
+plot(density(CTC[,3]))
+abline(v=Csqu[1,2],col=2)
+plot(density(CTC[,2]))
+abline(v=Csqu[2,1],col=2)
+plot(density(CTC[,4]))
+abline(v=Csqu[2,2],col=2)
+dev.off()
+#A
+pdf("density_A.pdf")
+par(mfrow=c(2,2))
+plot(density(AA[,1]))
+abline(v=A[1,1],col=2)
+abline(v=-A[1,1],col=3)
+plot(density(AA[,3]))
+abline(v=A[1,2],col=2)
+abline(v=-A[1,2],col=3)
+plot(density(AA[,2]))
+abline(v=A[2,1],col=2)
+abline(v=-A[2,1],col=3)
+plot(density(AA[,4]))
+abline(v=A[2,2],col=2)
+abline(v=-A[2,2],col=3)
+dev.off()
+#############
+pdf("density_abs_A.pdf")
+par(mfrow=c(2,2))
+x=seq(mean(abs(AA[,1]))-0.7,mean(abs(AA[,1]))+0.7,length=10000)
+y=dnorm(x,mean=mean(abs(AA[,1])),sd=sd(abs(AA[,1])))
+plot(x,y,type="l",ylim=c(0,5),col="3")
+lines(density(abs(AA[,1])))
+abline(v=A[1,1],col=2)
+x=seq(mean(abs(AA[,3]))-0.7,mean(abs(AA[,3]))+0.7,length=10000)
+y=dnorm(x,mean=mean(abs(AA[,3])),sd=sd(abs(AA[,3])))
+plot(x,y,type="l",ylim=c(0,8),col="3")
+lines(density(abs(AA[,3])))
+abline(v=abs(A[1,2]),col=2)
+x=seq(mean(abs(AA[,2]))-0.7,mean(abs(AA[,2]))+0.7,length=10000)
+y=dnorm(x,mean=mean(abs(AA[,2])),sd=sd(abs(AA[,2])))
+plot(x,y,type="l",ylim=c(0,9),col="3")
+
+lines(density(abs(AA[,2])))
+abline(v=A[2,1],col=2)
+x=seq(mean(abs(AA[,4]))-0.7,mean(abs(AA[,4]))+0.7,length=10000)
+y=dnorm(x,mean=mean(abs(AA[,4])),sd=sd(abs(AA[,4])))
+plot(x,y,type="l",ylim=c(0,6),col="3")
+lines(density(abs(AA[,4])))
+abline(v=A[2,2],col=2)
+dev.off()
+######
+Asqu=t(A)%*%A
+pdf("density_ATA.pdf")
+par(mfrow=c(2,2))
+plot(density(ATA[,1]))
+abline(v=Asqu[1,1],col=2)
+plot(density(ATA[,3]))
+abline(v=Asqu[1,2],col=2)
+plot(density(ATA[,2]))
+abline(v=Asqu[2,1],col=2)
+plot(density(ATA[,4]))
+abline(v=Asqu[2,2],col=2)
+dev.off()
+#B
+pdf("density_abs_B.pdf")
+par(mfrow=c(2,2))
+x=seq(mean(BB[,1])-2,mean(BB[,1])+2,length=10000)
+y=dnorm(x,mean=mean(abs(BB[,1])),sd=sd(abs(BB[,1])))
+plot(x,y,type="l",ylim=c(0,3),col="3")
+lines(density(abs(BB[,1])))
+abline(v=abs(B[1,1]),col=2)
+x=seq(mean(BB[,3])-2,mean(BB[,3])+2,length=10000)
+y=dnorm(x,mean=mean(abs(BB[,3])),sd=sd(abs(BB[,3])))
+plot(x,y,type="l",ylim=c(0,3),col="3")
+lines(density(abs(BB[,3])))
+abline(v=abs(B[1,2]),col=2)
+x=seq(mean(BB[,2])-2,mean(BB[,2])+2,length=10000)
+y=dnorm(x,mean=mean(abs(BB[,2])),sd=sd(abs(BB[,2])))
+plot(x,y,type="l",ylim=c(0,3),col="3")
+abline(v=abs(B[2,1]),col=2)
+lines(density(abs(BB[,2])))
+
+x=seq(mean(BB[,4])-2,mean(BB[,4])+2,length=10000)
+y=dnorm(x,mean=mean(abs(BB[,4])),sd=sd(abs(BB[,4])))
+plot(x,y,type="l",ylim=c(0,3),col="3")
+lines(density(abs(BB[,4])))
+abline(v=abs(B[2,2]),col=2)
+dev.off()
+pdf("density_B.pdf")
+par(mfrow=c(2,2))
+x=seq(mean(BB[,1])-2,mean(BB[,1])+2,length=10000)
+y=dnorm(x,mean=mean(BB[,1]),sd=sd(BB[,1]))
+plot(x,y,type="l",ylim=c(0,3),col="3")
+lines(density(BB[,1]))
+abline(v=B[1,1],col=2)
+x=seq(mean(BB[,3])-2,mean(BB[,3])+2,length=10000)
+y=dnorm(x,mean=mean(BB[,3]),sd=sd(BB[,3]))
+plot(x,y,type="l",ylim=c(0,3),col="3")
+lines(density(BB[,3]))
+abline(v=B[1,2],col=2)
+x=seq(mean(BB[,2])-2,mean(BB[,2])+2,length=10000)
+y=dnorm(x,mean=mean(BB[,2]),sd=sd(BB[,2]))
+plot(x,y,type="l",ylim=c(0,3),col="3")
+abline(v=B[2,1],col=2)
+lines(density(BB[,2]))
+x=seq(mean(BB[,4])-2,mean(BB[,4])+2,length=10000)
+y=dnorm(x,mean=mean(BB[,4]),sd=sd(BB[,4]))
+plot(x,y,type="l",ylim=c(0,3),col="3")
+lines(density(BB[,4]))
+abline(v=B[2,2],col=2)
+dev.off()
+##########
+Bsqu=t(B)%*%B
+pdf("density_BTB.pdf")
+par(mfrow=c(2,2))
+plot(density(BTB[,1]))
+abline(v=Bsqu[1,1],col=2)
+plot(density(BTB[,3]))
+abline(v=Bsqu[1,2],col=2)
+plot(density(BTB[,2]))
+abline(v=Bsqu[2,1],col=2)
+
+plot(density(BTB[,4]))
+abline(v=Bsqu[2,2],col=2)
+dev.off()
+#5.2 distance for all simulations
+#install.packages("shapes")
+CC=read.csv("Estimation_C.csv")
+CC=as.matrix(CC)
+AA=read.csv("Estimation_A.csv")
+AA=as.matrix(AA)
+BB=read.csv("Estimation_B.csv")
+BB=as.matrix(BB)
+sigma_hat=read.csv("2D_Sigma_hat.csv")
+sigma_hat=as.matrix(sigma_hat)
+true_sigma=read.csv("2D real Sigma at different time with repetition.csv")
+true_sigma=as.matrix(true_sigma)
+library(shapes)
+distance=matrix(0,realT,repe)
+for (j in 1:repe)
+{
+for (i in 1: realT)
+{
+distance[i,j]=distcov(matrix(true_sigma[i,(4*j-3):(4*j)],2,2),matrix(sigma_hat[i,(4*j-3):(4*j)],2,2),method="Procrustes")
+}
+}
+distance
+head(distance)
+a=distance[,1]
+boxplot(a)
+qu=quantile(a,0.75)+(1.5*(quantile(a,0.75)-quantile(a,0.25)))
+a[a>qu]
+plot.ts(a)
+#write.table(distance,"distance between true sigma and sigma hat.csv",sep=",",row.names = FALSE)
+distance=read.csv("distance between true sigma and sigma hat.csv")
+distance=as.matrix(distance)
+min=qu1=med=mea=qu3=max=sd=0
+for (j in 1:repe)
+{
+min[j]=min(distance[,j])
+qu1[j]=quantile(distance[,j],0.25,names=FALSE)
+med[j]=median(distance[,j])
+qu3[j]=quantile(distance[,j],0.75,names=FALSE)
+max[j]=max(distance[,j])
+sd[j]=sd(distance[,j])
+}
+pdf("summary_distance.pdf")
+input=data.frame(cbind(min,qu1,med,qu3,max,sd))
+boxplot(input,xlab="summary the distance of all dataset",ylab="distance",col=c(2:7))
+dev.off()
+#boxplot for summary distance for 3 ditaset
+input1=data.frame(cbind(distance[,1],distance[,2],distance[,3]))
+pdf("distance_plot_var_and_hatvar_for_3_dataset.pdf")
+par(mfrow=c(2,1))
+plot.ts(distance[,1],main="Distance",ylab="distance for covatiance",ylim = c(0,0.03),col=2)
+lines(x=c(1:realT),distance[,2],col=3)
+lines(x=c(1:realT),distance[,3],col=4)
+legend("topright", legend = c("data 1","data 2","data 3"),cex = 0.7,lty = 1, col = 2:4)
+abline(h=0,lty=2,lwd=2,col=9)
+boxplot(input1,xlab="difference between two conditional covariances",ylab="distance",col=c(2:4))
+dev.off()
+#section 6
+#6.1.1 negC
+#T=1000,R=500
+rm(list=ls())
+repe=500
+time=1200
+xx2=matrix(0,time,2*repe)
+#install.packages("matrixcalc")
+library(matrixcalc)
+sigma=matrix(0,time,2^2*repe)
+m <- 1
+repeat
+{
+#CTC=lower*upper
+#chol is upper
+C=-matrix(c(0.004,0,0.005,0.003), nrow = 2, ncol = 2) #upper
+CTC=t(C)%*%C
+C=chol(CTC)
+A=matrix(c(0.254,0.04,-0.004,0.332),2, ncol = 2)
+B=matrix(c(0.941,-0.019,0.023,0.864),2,2)
+library(MASS)
+#set.seed(2)
+eta1=mvrnorm(n = 1, mu=rep(0, 2),Sigma=diag(c(1, 1)))
+sigma1=CTC
+svdH = svd(sigma1)
+sqrt.sigma1 = svdH$u %*% diag(sqrt(svdH$d)) %*% t(svdH$v)
+eta1=mvrnorm(n = 1, mu= rep(0, 2),Sigma=diag(c(1, 1)))
+u1=sqrt.sigma1%*%eta1
+xx2[1,((2*m-1):(2*m))]=u1
+sigma[1,((4*m-3):(4*m))]=as.vector(sigma1)
+for (i in (2:time))
+{
+sigma2=CTC+t(A)%*%u1%*%t(u1)%*%A+t(B)%*%sigma1%*%B
+svdH = svd(sigma2)
+sqrt.sigma2 = svdH$u %*% diag(sqrt(svdH$d)) %*% t(svdH$v)
+eta2=mvrnorm(n = 1, mu=rep(0, 2), Sigma=diag(c(1, 1)))
+u2=sqrt.sigma2%*%eta2
+xx2[i,((2*m-1):(2*m))]=u2
+sigma[i,((4*m-3):(4*m))]=as.vector(sigma2)
+sigma1=sigma2
+u1=u2
+}
+# print(m)
+m = m+1
+if (m == repe+1)
+{
+break
+}
+}
+burn=200
+real_sigma=sigma[((burn+1):time),]
+real_xx2=xx2[((burn+1):time),]
+#write.table(real_xx2,"2D real series with repetition negC.csv",sep=",",row.names = FALSE)
+xx2=read.csv("2D real series with repetition negC.csv")
+xx2=as.matrix(xx2)
+#write.table(real_sigma,"2D real Sigma at different time with repetition negC.csv",sep=",",row.names = FALSE)
+true_sigma=read.csv("2D real Sigma at different time with repetition negC.csv")
+true_sigma=as.matrix(true_sigma)
+realT=1000
+repe=500
+library(tseries)
+library(mvtnorm)
+library(mgarchBEKK)
+C=matrix(0,2,2*repe)
+A=matrix(0,2,2*repe)
+B=matrix(0,2,2*repe)
+sigma_hat=matrix(0,realT,4*repe)
+series_hat=matrix(0,realT,2*repe)
+e=1
+repeat
+{
+resbs= BEKK(xx2[,((2*e-1):(2*e))], order=c(1,1))
+for (i in 1:realT)
+{
+sigma_hat[i,((4*e-3):(4*e))]=resbs$H.estimated[[i]] ##estimate sigma
+}
+C[,((2*e-1):(2*e))]=resbs$est.params$‘1‘
+A[,((2*e-1):(2*e))]=resbs$est.params$‘2‘
+B[,((2*e-1):(2*e))]=resbs$est.params$‘3‘
+print(e)
+e= e+1
+if (e == repe+1)
+{
+break
+}
+}
+CC=AA=BB=matrix(0,repe,4)
+for (i in 1:repe)
+{
+CC[i,]=as.vector(C[,((2*i-1):(2*i))])
+AA[i,]=as.vector(A[,((2*i-1):(2*i))])
+BB[i,]=as.vector(B[,((2*i-1):(2*i))])
+}
+#write.table(CC,"Estimation of C negC.csv",sep=",",row.names = FALSE)
+CC=read.csv("Estimation of C negC.csv")
+CC=as.matrix(CC)
+#write.table(AA,"Estimation of A negC.csv",sep=",",row.names = FALSE)
+AA=read.csv("Estimation of A negC.csv")
+AA=as.matrix(AA)
+#write.table(BB,"Estimation of B negC.csv",sep=",",row.names = FALSE)
+BB=read.csv("Estimation of B negC.csv")
+BB=as.matrix(BB)
+#write.table(sigma_hat,"2D Sigma hat at different time with repetition negC.csv",sep=",",row.names = FALSE)
+sigma_hat=read.csv("2D Sigma hat at different time with repetition negC.csv")
+sigma_hat=as.matrix(sigma_hat)
+C=-matrix(c(0.004,0,0.005,0.003), nrow = 2, ncol = 2) #upper
+A=matrix(c(0.254,0.04,-0.004,0.332),2, ncol = 2)
+B=matrix(c(0.941,-0.019,0.023,0.864),2,2)
+#C
+pdf("density_C_negC.pdf")
+par(mfrow=c(2,2))
+plot(density(CC[,1]))
+abline(v=C[1,1],col=2)
+abline(v=-C[1,1],col=3)
+plot(density(CC[,3]))
+abline(v= C[1,2],col=2)
+abline(v= -C[1,2],col=3)
+plot(rep(0,100),rep(0,100),type="l",xlim=c(-1,1),ylim=c(0,2),xlab = "all 0 values")
+abline(v=0,col=2)
+plot(density(CC[,4]))
+abline(v=C[2,2],col=2)
+abline(v=-C[2,2],col=3)
+dev.off()
+#A
+pdf("density_A_negC.pdf")
+par(mfrow=c(2,2))
+plot(density(AA[,1]))
+abline(v=A[1,1],col=2)
+abline(v=-A[1,1],col=3)
+plot(density(AA[,3]))
+abline(v=A[1,2],col=2)
+abline(v=-A[1,2],col=3)
+plot(density(AA[,2]))
+abline(v=A[2,1],col=2)
+
+
+abline(v=-A[2,1],col=3)
+plot(density(AA[,4]))
+abline(v=A[2,2],col=2)
+abline(v=-A[2,2],col=3)
+dev.off()
+#B
+pdf("density_B_negC.pdf")
+par(mfrow=c(2,2))
+x=seq(mean(BB[,1])-2,mean(BB[,1])+2,length=10000)
+y=dnorm(x,mean=mean(BB[,1]),sd=sd(BB[,1]))
+plot(x,y,type="l",ylim=c(0,3),col="3")
+lines(density(BB[,1]))
+abline(v=B[1,1],col=2)
+x=seq(mean(BB[,3])-2,mean(BB[,3])+2,length=10000)
+y=dnorm(x,mean=mean(BB[,3]),sd=sd(BB[,3]))
+plot(x,y,type="l",ylim=c(0,3),col="3")
+lines(density(BB[,3]))
+abline(v=B[1,2],col=2)
+x=seq(mean(BB[,2])-2,mean(BB[,2])+2,length=10000)
+y=dnorm(x,mean=mean(BB[,2]),sd=sd(BB[,2]))
+plot(x,y,type="l",ylim=c(0,3),col="3")
+abline(v=B[2,1],col=2)
+lines(density(BB[,2]))
+x=seq(mean(BB[,4])-2,mean(BB[,4])+2,length=10000)
+y=dnorm(x,mean=mean(BB[,4]),sd=sd(BB[,4]))
+plot(x,y,type="l",ylim=c(0,3),col="3")
+lines(density(BB[,4]))
+abline(v=B[2,2],col=2)
+dev.off()
+#6.1
+#6.1.1 negA
+#T=1000,R=500
+rm(list=ls())
+repe=500
+time=1200
+xx2=matrix(0,time,2*repe)
+#install.packages("matrixcalc")
+library(matrixcalc)
+
+sigma=matrix(0,time,2^2*repe)
+m <- 1
+repeat
+{
+C=matrix(c(0.004,0,0.005,0.003), nrow = 2, ncol = 2) #upper
+CTC=t(C)%*%C
+C=chol(CTC)
+A=-matrix(c(0.254,0.04,-0.004,0.332),2, ncol = 2)
+B=matrix(c(0.941,-0.019,0.023,0.864),2,2)
+library(MASS)
+eta1=mvrnorm(n = 1, mu=rep(0, 2),Sigma=diag(c(1, 1)))
+sigma1=CTC
+svdH = svd(sigma1)
+sqrt.sigma1 = svdH$u %*% diag(sqrt(svdH$d)) %*% t(svdH$v)
+eta1=mvrnorm(n = 1, mu= rep(0, 2),Sigma=diag(c(1, 1)))
+u1=sqrt.sigma1%*%eta1
+xx2[1,((2*m-1):(2*m))]=u1
+sigma[1,((4*m-3):(4*m))]=as.vector(sigma1)
+for (i in (2:time))
+{
+sigma2=CTC+t(A)%*%u1%*%t(u1)%*%A+t(B)%*%sigma1%*%B
+svdH = svd(sigma2)
+sqrt.sigma2 = svdH$u %*% diag(sqrt(svdH$d)) %*% t(svdH$v)
+eta2=mvrnorm(n = 1, mu=rep(0, 2), Sigma=diag(c(1, 1)))
+u2=sqrt.sigma2%*%eta2
+xx2[i,((2*m-1):(2*m))]=u2
+sigma[i,((4*m-3):(4*m))]=as.vector(sigma2)
+sigma1=sigma2
+u1=u2
+}
+# print(m)
+m = m+1
+if (m == repe+1)
+{
+break
+}
+}
+burn=200
+real_sigma=sigma[((burn+1):time),]
+
+real_xx2=xx2[((burn+1):time),]
+#write.table(real_xx2,"2D real series with repetition negA.csv",sep=",",row.names = FALSE)
+xx2=read.csv("2D real series with repetition negA.csv")
+xx2=as.matrix(xx2)
+#write.table(real_sigma,"2D real Sigma at different time with repetition negA.csv",sep=",",row.names = FALSE)
+true_sigma=read.csv("2D real Sigma at different time with repetition negA.csv")
+true_sigma=as.matrix(true_sigma)
+realT=1000
+repe=500
+library(tseries)
+library(mvtnorm)
+library(mgarchBEKK)
+C=matrix(0,2,2*repe)
+A=matrix(0,2,2*repe)
+B=matrix(0,2,2*repe)
+sigma_hat=matrix(0,realT,4*repe)
+series_hat=matrix(0,realT,2*repe)
+e=1
+repeat
+{
+resbs= BEKK(xx2[,((2*e-1):(2*e))], order=c(1,1))
+for (i in 1:realT)
+{
+sigma_hat[i,((4*e-3):(4*e))]=resbs$H.estimated[[i]] ##estimate sigma
+}
+C[,((2*e-1):(2*e))]=resbs$est.params$‘1‘
+A[,((2*e-1):(2*e))]=resbs$est.params$‘2‘
+B[,((2*e-1):(2*e))]=resbs$est.params$‘3‘
+print(e)
+e= e+1
+if (e == repe+1)
+{
+break
+}
+}
+CC=AA=BB=matrix(0,repe,4)
+for (i in 1:repe)
+{
+CC[i,]=as.vector(C[,((2*i-1):(2*i))])
+AA[i,]=as.vector(A[,((2*i-1):(2*i))])
+BB[i,]=as.vector(B[,((2*i-1):(2*i))])
+}
+#write.table(CC,"Estimation of C negA.csv",sep=",",row.names = FALSE)
+CC=read.csv("Estimation of C negA.csv")
+CC=as.matrix(CC)
+#write.table(AA,"Estimation of A negA.csv",sep=",",row.names = FALSE)
+AA=read.csv("Estimation of A negA.csv")
+AA=as.matrix(AA)
+#write.table(BB,"Estimation of B negA.csv",sep=",",row.names = FALSE)
+BB=read.csv("Estimation of B negA.csv")
+BB=as.matrix(BB)
+#write.table(sigma_hat,"2D Sigma hat at different time with repetition negA.csv",sep=",",row.names = FALSE)
+sigma_hat=read.csv("2D Sigma hat at different time with repetition negA.csv")
+sigma_hat=as.matrix(sigma_hat)
+C=matrix(c(0.004,0,0.005,0.003), nrow = 2, ncol = 2) #upper
+A=-matrix(c(0.254,0.04,-0.004,0.332),2, ncol = 2)
+B=matrix(c(0.941,-0.019,0.023,0.864),2,2)
+#C
+pdf("density_C_negA.pdf")
+par(mfrow=c(2,2))
+plot(density(CC[,1]))
+abline(v=C[1,1],col=2)
+abline(v=-C[1,1],col=3)
+plot(density(CC[,3]))
+abline(v= C[1,2],col=2)
+abline(v= -C[1,2],col=3)
+plot(rep(0,100),rep(0,100),type="l",xlim=c(-1,1),ylim=c(0,2),xlab = "all 0 values")
+abline(v=0,col=2)
+plot(density(CC[,4]))
+abline(v=C[2,2],col=2)
+abline(v=-C[2,2],col=3)
+dev.off()
+#A
+pdf("density_A_negA.pdf")
+par(mfrow=c(2,2))
+plot(density(AA[,1]))
+abline(v=A[1,1],col=2)
+abline(v=-A[1,1],col=3)
+plot(density(AA[,3]))
+abline(v=A[1,2],col=2)
+abline(v=-A[1,2],col=3)
+plot(density(AA[,2]))
+abline(v=A[2,1],col=2)
+abline(v=-A[2,1],col=3)
+plot(density(AA[,4]))
+abline(v=A[2,2],col=2)
+abline(v=-A[2,2],col=3)
+dev.off()
+#B
+pdf("density_B_negA.pdf")
+par(mfrow=c(2,2))
+x=seq(mean(BB[,1])-2,mean(BB[,1])+2,length=10000)
+y=dnorm(x,mean=mean(BB[,1]),sd=sd(BB[,1]))
+plot(x,y,type="l",ylim=c(0,3),col="3")
+lines(density(BB[,1]))
+abline(v=B[1,1],col=2)
+x=seq(mean(BB[,3])-2,mean(BB[,3])+2,length=10000)
+y=dnorm(x,mean=mean(BB[,3]),sd=sd(BB[,3]))
+plot(x,y,type="l",ylim=c(0,3),col="3")
+lines(density(BB[,3]))
+abline(v=B[1,2],col=2)
+x=seq(mean(BB[,2])-2,mean(BB[,2])+2,length=10000)
+y=dnorm(x,mean=mean(BB[,2]),sd=sd(BB[,2]))
+plot(x,y,type="l",ylim=c(0,3),col="3")
+abline(v=B[2,1],col=2)
+lines(density(BB[,2]))
+x=seq(mean(BB[,4])-2,mean(BB[,4])+2,length=10000)
+y=dnorm(x,mean=mean(BB[,4]),sd=sd(BB[,4]))
+plot(x,y,type="l",ylim=c(0,3),col="3")
+lines(density(BB[,4]))
+abline(v=B[2,2],col=2)
+dev.off()
+#6.1
+#6.1.1 negB
+#T=1000,R=500
+rm(list=ls())
+repe=500
+time=1200
+xx2=matrix(0,time,2*repe)
+#install.packages("matrixcalc")
+library(matrixcalc)
+sigma=matrix(0,time,2^2*repe)
+m <- 1
+repeat
+{
+C=matrix(c(0.004,0,0.005,0.003), nrow = 2, ncol = 2) #upper
+CTC=t(C)%*%C
+C=chol(CTC)
+A=matrix(c(0.254,0.04,-0.004,0.332),2, ncol = 2)
+B=-matrix(c(0.941,-0.019,0.023,0.864),2,2)
+library(MASS)
+eta1=mvrnorm(n = 1, mu=rep(0, 2),Sigma=diag(c(1, 1)))
+sigma1=CTC
+svdH = svd(sigma1)
+sqrt.sigma1 = svdH$u %*% diag(sqrt(svdH$d)) %*% t(svdH$v)
+eta1=mvrnorm(n = 1, mu= rep(0, 2),Sigma=diag(c(1, 1)))
+u1=sqrt.sigma1%*%eta1
+xx2[1,((2*m-1):(2*m))]=u1
+sigma[1,((4*m-3):(4*m))]=as.vector(sigma1)
+for (i in (2:time))
+{
+sigma2=CTC+t(A)%*%u1%*%t(u1)%*%A+t(B)%*%sigma1%*%B
+svdH = svd(sigma2)
+sqrt.sigma2 = svdH$u %*% diag(sqrt(svdH$d)) %*% t(svdH$v)
+eta2=mvrnorm(n = 1, mu=rep(0, 2), Sigma=diag(c(1, 1)))
+u2=sqrt.sigma2%*%eta2
+xx2[i,((2*m-1):(2*m))]=u2
+sigma[i,((4*m-3):(4*m))]=as.vector(sigma2)
+sigma1=sigma2
+u1=u2
+}
+# print(m)
+m = m+1
+if (m == repe+1)
+  {
+break
+}
+}
+burn=200
+real_sigma=sigma[((burn+1):time),]
+real_xx2=xx2[((burn+1):time),]
+write.table(real_xx2,"2D real series with repetition negB.csv",sep=",",row.names = FALSE)
+xx2=read.csv("2D real series with repetition negB.csv")
+xx2=as.matrix(xx2)
+write.table(real_sigma,"2D real Sigma at different time with repetition negB.csv",sep=",",row.names = FALSE)
+true_sigma=read.csv("2D real Sigma at different time with repetition negB.csv")
+true_sigma=as.matrix(true_sigma)
+realT=1000
+repe=500
+library(tseries)
+library(mvtnorm)
+library(mgarchBEKK)
+C=matrix(0,2,2*repe)
+A=matrix(0,2,2*repe)
+B=matrix(0,2,2*repe)
+sigma_hat=matrix(0,realT,4*repe)
+series_hat=matrix(0,realT,2*repe)
+e=1
+repeat
+{
+resbs= BEKK(xx2[,((2*e-1):(2*e))], order=c(1,1))
+for (i in 1:realT)
+{
+sigma_hat[i,((4*e-3):(4*e))]=resbs$H.estimated[[i]] ##estimate sigma
+}
+C[,((2*e-1):(2*e))]=resbs$est.params$‘1‘
+A[,((2*e-1):(2*e))]=resbs$est.params$‘2‘
+B[,((2*e-1):(2*e))]=resbs$est.params$‘3‘
+print(e)
+e= e+1
+if (e == repe+1)
+{
+break
+}
+}
+CC=AA=BB=matrix(0,repe,4)
+for (i in 1:repe)
+{
+CC[i,]=as.vector(C[,((2*i-1):(2*i))])
+AA[i,]=as.vector(A[,((2*i-1):(2*i))])
+BB[i,]=as.vector(B[,((2*i-1):(2*i))])
+}
+write.table(CC,"Estimation of C negB.csv",sep=",",row.names = FALSE)
+CC=read.csv("Estimation of C negB.csv")
+CC=as.matrix(CC)
+write.table(AA,"Estimation of A negB.csv",sep=",",row.names = FALSE)
+AA=read.csv("Estimation of A negB.csv")
+AA=as.matrix(AA)
+write.table(BB,"Estimation of B negB.csv",sep=",",row.names = FALSE)
+BB=read.csv("Estimation of B negB.csv")
+BB=as.matrix(BB)
+write.table(sigma_hat,"2D Sigma hat at different time with repetition negB.csv",sep=",",row.names = FALSE)
+sigma_hat=read.csv("2D Sigma hat at different time with repetition negB.csv")
+sigma_hat=as.matrix(sigma_hat)
+C=matrix(c(0.004,0,0.005,0.003), nrow = 2, ncol = 2) #upper
+A=matrix(c(0.254,0.04,-0.004,0.332),2, ncol = 2)
+B=-matrix(c(0.941,-0.019,0.023,0.864),2,2)
+#C
+pdf("density_C_negB.pdf")
+par(mfrow=c(2,2))
+plot(density(CC[,1]))
+abline(v=C[1,1],col=2)
+abline(v=-C[1,1],col=3)
+plot(density(CC[,3]))
+abline(v= C[1,2],col=2)
+abline(v= -C[1,2],col=3)
+plot(rep(0,100),rep(0,100),type="l",xlim=c(-1,1),ylim=c(0,2),xlab = "all 0 values")
+abline(v=0,col=2)
+plot(density(CC[,4]))
+abline(v=C[2,2],col=2)
+abline(v=-C[2,2],col=3)
+dev.off()
+#A
+pdf("density_A_negB.pdf")
+par(mfrow=c(2,2))
+plot(density(AA[,1]))
+abline(v=A[1,1],col=2)
+abline(v=-A[1,1],col=3)
+plot(density(AA[,3]))
+abline(v=A[1,2],col=2)
+abline(v=-A[1,2],col=3)
+plot(density(AA[,2]))
+abline(v=A[2,1],col=2)
+abline(v=-A[2,1],col=3)
+plot(density(AA[,4]))
+abline(v=A[2,2],col=2)
+abline(v=-A[2,2],col=3)
+dev.off()
+#B
+pdf("density_B_negB.pdf")
+par(mfrow=c(2,2))
+x=seq(mean(BB[,1])-2,mean(BB[,1])+2,length=10000)
+y=dnorm(x,mean=mean(BB[,1]),sd=sd(BB[,1]))
+plot(x,y,type="l",ylim=c(0,3),col="3")
+lines(density(BB[,1]))
+abline(v=B[1,1],col=2)
+x=seq(mean(BB[,3])-2,mean(BB[,3])+2,length=10000)
+y=dnorm(x,mean=mean(BB[,3]),sd=sd(BB[,3]))
+plot(x,y,type="l",ylim=c(0,3),col="3")
+lines(density(BB[,3]))
+abline(v=B[1,2],col=2)
+x=seq(mean(BB[,2])-2,mean(BB[,2])+2,length=10000)
+y=dnorm(x,mean=mean(BB[,2]),sd=sd(BB[,2]))
+plot(x,y,type="l",ylim=c(0,3),col="3")
+abline(v=B[2,1],col=2)
+lines(density(BB[,2]))
+x=seq(mean(BB[,4])-2,mean(BB[,4])+2,length=10000)
+y=dnorm(x,mean=mean(BB[,4]),sd=sd(BB[,4]))
+plot(x,y,type="l",ylim=c(0,3),col="3")
+lines(density(BB[,4]))
+abline(v=B[2,2],col=2)
+dev.off()
+#6.2 neg AB BC AC
+#6.2.1 negAB
+#T=1000,R=500
+rm(list=ls())
+repe=500
+time=1200
+xx2=matrix(0,time,2*repe)
+#install.packages("matrixcalc")
+library(matrixcalc)
+sigma=matrix(0,time,2^2*repe)
+m <- 1
+repeat
+{
+#CTC=lower*upper
+#chol is upper
+C=matrix(c(0.004,0,0.005,0.003), nrow = 2, ncol = 2) #upper
+CTC=t(C)%*%C
+C=chol(CTC)
+A=-matrix(c(0.254,0.04,-0.004,0.332),2, ncol = 2)
+B=-matrix(c(0.941,-0.019,0.023,0.864),2,2)
+#sigma.diag1=diag(c(1, 1))
+#install.packages("MASS")
+library(MASS)
+#set.seed(2)
+eta1=mvrnorm(n = 1, mu=rep(0, 2),Sigma=diag(c(1, 1)))
+sigma1=CTC
+svdH = svd(sigma1)
+sqrt.sigma1 = svdH$u %*% diag(sqrt(svdH$d)) %*% t(svdH$v)
+eta1=mvrnorm(n = 1, mu= rep(0, 2),Sigma=diag(c(1, 1)))
+u1=sqrt.sigma1%*%eta1
+xx2[1,((2*m-1):(2*m))]=u1
+sigma[1,((4*m-3):(4*m))]=as.vector(sigma1)
+for (i in (2:time))
+{
+sigma2=CTC+t(A)%*%u1%*%t(u1)%*%A+t(B)%*%sigma1%*%B
+  svdH = svd(sigma2)
+sqrt.sigma2 = svdH$u %*% diag(sqrt(svdH$d)) %*% t(svdH$v)
+eta2=mvrnorm(n = 1, mu=rep(0, 2), Sigma=diag(c(1, 1)))
+u2=sqrt.sigma2%*%eta2
+xx2[i,((2*m-1):(2*m))]=u2
+sigma[i,((4*m-3):(4*m))]=as.vector(sigma2)
+sigma1=sigma2
+u1=u2
+}
+# print(m)
+m = m+1
+if (m == repe+1)
+{
+break
+}
+}
+burn=200
+real_sigma=sigma[((burn+1):time),]
+real_xx2=xx2[((burn+1):time),]
+write.table(real_xx2,"2D real series with repetition negAB.csv",sep=",",row.names = FALSE)
+xx2=read.csv("2D real series with repetition negAB.csv")
+xx2=as.matrix(xx2)
+write.table(real_sigma,"2D real Sigma at different time with repetition negAB.csv",sep=",",row.names = FALSE)
+true_sigma=read.csv("2D real Sigma at different time with repetition negAB.csv")
+true_sigma=as.matrix(true_sigma)
+realT=1000
+repe=500
+library(tseries)
+library(mvtnorm)
+library(mgarchBEKK)
+C=matrix(0,2,2*repe)
+A=matrix(0,2,2*repe)
+B=matrix(0,2,2*repe)
+sigma_hat=matrix(0,realT,4*repe)
+series_hat=matrix(0,realT,2*repe)
+e=1
+repeat
+{
+resbs= BEKK(xx2[,((2*e-1):(2*e))], order=c(1,1))
+  for (i in 1:realT)
+{
+sigma_hat[i,((4*e-3):(4*e))]=resbs$H.estimated[[i]] ##estimate sigma
+}
+C[,((2*e-1):(2*e))]=resbs$est.params$‘1‘
+A[,((2*e-1):(2*e))]=resbs$est.params$‘2‘
+B[,((2*e-1):(2*e))]=resbs$est.params$‘3‘
+print(e)
+e= e+1
+if (e == repe+1)
+{
+break
+}
+}
+CC=AA=BB=matrix(0,repe,4)
+for (i in 1:repe)
+{
+CC[i,]=as.vector(C[,((2*i-1):(2*i))])
+AA[i,]=as.vector(A[,((2*i-1):(2*i))])
+BB[i,]=as.vector(B[,((2*i-1):(2*i))])
+}
+write.table(CC,"Estimation of C negAB.csv",sep=",",row.names = FALSE)
+CC=read.csv("Estimation of C negAB.csv")
+CC=as.matrix(CC)
+write.table(AA,"Estimation of A negAB.csv",sep=",",row.names = FALSE)
+AA=read.csv("Estimation of A negAB.csv")
+AA=as.matrix(AA)
+write.table(BB,"Estimation of B negAB.csv",sep=",",row.names = FALSE)
+BB=read.csv("Estimation of B negAB.csv")
+BB=as.matrix(BB)
+write.table(sigma_hat,"2D Sigma hat at different time with repetition negAB.csv",sep=",",row.names = FALSE)
+sigma_hat=read.csv("2D Sigma hat at different time with repetition negAB.csv")
+sigma_hat=as.matrix(sigma_hat)
+C=matrix(c(0.004,0,0.005,0.003), nrow = 2, ncol = 2) #upper
+A=-matrix(c(0.254,0.04,-0.004,0.332),2, ncol = 2)
+B=-matrix(c(0.941,-0.019,0.023,0.864),2,2)
+#C
+pdf("density_C_negAB.pdf")
+  par(mfrow=c(2,2))
+plot(density(CC[,1]))
+abline(v=C[1,1],col=2)
+abline(v=-C[1,1],col=3)
+plot(density(CC[,3]))
+abline(v= C[1,2],col=2)
+abline(v= -C[1,2],col=3)
+plot(rep(0,100),rep(0,100),type="l",xlim=c(-1,1),ylim=c(0,2),xlab = "all 0 values")
+abline(v=0,col=2)
+plot(density(CC[,4]))
+abline(v=C[2,2],col=2)
+abline(v=-C[2,2],col=3)
+dev.off()
+#A
+pdf("density_A_negAB.pdf")
+par(mfrow=c(2,2))
+plot(density(AA[,1]))
+abline(v=A[1,1],col=2)
+abline(v=-A[1,1],col=3)
+plot(density(AA[,3]))
+abline(v=A[1,2],col=2)
+abline(v=-A[1,2],col=3)
+plot(density(AA[,2]))
+abline(v=A[2,1],col=2)
+abline(v=-A[2,1],col=3)
+plot(density(AA[,4]))
+abline(v=A[2,2],col=2)
+abline(v=-A[2,2],col=3)
+dev.off()
+#B
+pdf("density_B_negAB.pdf")
+par(mfrow=c(2,2))
+x=seq(mean(BB[,1])-2,mean(BB[,1])+2,length=10000)
+y=dnorm(x,mean=mean(BB[,1]),sd=sd(BB[,1]))
+plot(x,y,type="l",ylim=c(0,3),col="3")
+lines(density(BB[,1]))
+abline(v=B[1,1],col=2)
+x=seq(mean(BB[,3])-2,mean(BB[,3])+2,length=10000)
+  y=dnorm(x,mean=mean(BB[,3]),sd=sd(BB[,3]))
+plot(x,y,type="l",ylim=c(0,3),col="3")
+lines(density(BB[,3]))
+abline(v=B[1,2],col=2)
+x=seq(mean(BB[,2])-2,mean(BB[,2])+2,length=10000)
+y=dnorm(x,mean=mean(BB[,2]),sd=sd(BB[,2]))
+plot(x,y,type="l",ylim=c(0,3),col="3")
+abline(v=B[2,1],col=2)
+lines(density(BB[,2]))
+x=seq(mean(BB[,4])-2,mean(BB[,4])+2,length=10000)
+y=dnorm(x,mean=mean(BB[,4]),sd=sd(BB[,4]))
+plot(x,y,type="l",ylim=c(0,3),col="3")
+lines(density(BB[,4]))
+abline(v=B[2,2],col=2)
+dev.off()
+#6.1
+#6.2.2 negAC
+#T=1000,R=500
+rm(list=ls())
+repe=500
+time=1200
+xx2=matrix(0,time,2*repe)
+#install.packages("matrixcalc")
+library(matrixcalc)
+sigma=matrix(0,time,2^2*repe)
+m <- 1
+repeat
+{
+#CTC=lower*upper
+#chol is upper
+C=-matrix(c(0.004,0,0.005,0.003), nrow = 2, ncol = 2) #upper
+CTC=t(C)%*%C
+C=chol(CTC)
+A=-matrix(c(0.254,0.04,-0.004,0.332),2, ncol = 2)
+B=matrix(c(0.941,-0.019,0.023,0.864),2,2)
+library(MASS)
+#set.seed(2)
+eta1=mvrnorm(n = 1, mu=rep(0, 2),Sigma=diag(c(1, 1)))
+  sigma1=CTC
+svdH = svd(sigma1)
+sqrt.sigma1 = svdH$u %*% diag(sqrt(svdH$d)) %*% t(svdH$v)
+eta1=mvrnorm(n = 1, mu= rep(0, 2),Sigma=diag(c(1, 1)))
+u1=sqrt.sigma1%*%eta1
+xx2[1,((2*m-1):(2*m))]=u1
+sigma[1,((4*m-3):(4*m))]=as.vector(sigma1)
+for (i in (2:time))
+{
+sigma2=CTC+t(A)%*%u1%*%t(u1)%*%A+t(B)%*%sigma1%*%B
+svdH = svd(sigma2)
+sqrt.sigma2 = svdH$u %*% diag(sqrt(svdH$d)) %*% t(svdH$v)
+eta2=mvrnorm(n = 1, mu=rep(0, 2), Sigma=diag(c(1, 1)))
+u2=sqrt.sigma2%*%eta2
+xx2[i,((2*m-1):(2*m))]=u2
+sigma[i,((4*m-3):(4*m))]=as.vector(sigma2)
+sigma1=sigma2
+u1=u2
+}
+# print(m)
+m = m+1
+if (m == repe+1)
+{
+break
+}
+}
+burn=200
+real_sigma=sigma[((burn+1):time),]
+real_xx2=xx2[((burn+1):time),]
+write.table(real_xx2,"2D real series with repetition negAC.csv",sep=",",row.names = FALSE)
+xx2=read.csv("2D real series with repetition negAC.csv")
+xx2=as.matrix(xx2)
+write.table(real_sigma,"2D real Sigma at different time with repetition negAC.csv",sep=",",row.names = FALSE)
+true_sigma=read.csv("2D real Sigma at different time with repetition negAC.csv")
+true_sigma=as.matrix(true_sigma)
+realT=1000
+repe=500
+library(tseries)
+library(mvtnorm)
+library(mgarchBEKK)
+C=matrix(0,2,2*repe)
+A=matrix(0,2,2*repe)
+B=matrix(0,2,2*repe)
+sigma_hat=matrix(0,realT,4*repe)
+series_hat=matrix(0,realT,2*repe)
+e=1
+repeat
+{
+resbs= BEKK(xx2[,((2*e-1):(2*e))], order=c(1,1))
+for (i in 1:realT)
+{
+sigma_hat[i,((4*e-3):(4*e))]=resbs$H.estimated[[i]] ##estimate sigma
+}
+C[,((2*e-1):(2*e))]=resbs$est.params$‘1‘
+A[,((2*e-1):(2*e))]=resbs$est.params$‘2‘
+B[,((2*e-1):(2*e))]=resbs$est.params$‘3‘
+print(e)
+e= e+1
+if (e == repe+1)
+{
+break
+}
+}
+CC=AA=BB=matrix(0,repe,4)
+for (i in 1:repe)
+{
+CC[i,]=as.vector(C[,((2*i-1):(2*i))])
+AA[i,]=as.vector(A[,((2*i-1):(2*i))])
+BB[i,]=as.vector(B[,((2*i-1):(2*i))])
+}
+write.table(CC,"Estimation of C negAC.csv",sep=",",row.names = FALSE)
+CC=read.csv("Estimation of C negAC.csv")
+CC=as.matrix(CC)
+write.table(AA,"Estimation of A negAC.csv",sep=",",row.names = FALSE)
+AA=read.csv("Estimation of A negAC.csv")
+AA=as.matrix(AA)
+  write.table(BB,"Estimation of B negAC.csv",sep=",",row.names = FALSE)
+BB=read.csv("Estimation of B negAC.csv")
+BB=as.matrix(BB)
+write.table(sigma_hat,"2D Sigma hat at different time with repetition negAC.csv",sep=",",row.names = FALSE)
+sigma_hat=read.csv("2D Sigma hat at different time with repetition negAC.csv")
+sigma_hat=as.matrix(sigma_hat)
+C=-matrix(c(0.004,0,0.005,0.003), nrow = 2, ncol = 2) #upper
+A=-matrix(c(0.254,0.04,-0.004,0.332),2, ncol = 2)
+B=matrix(c(0.941,-0.019,0.023,0.864),2,2)
+#C
+pdf("density_C_negAC.pdf")
+par(mfrow=c(2,2))
+plot(density(CC[,1]))
+abline(v=C[1,1],col=2)
+abline(v=-C[1,1],col=3)
+plot(density(CC[,3]))
+abline(v= C[1,2],col=2)
+abline(v= -C[1,2],col=3)
+plot(rep(0,100),rep(0,100),type="l",xlim=c(-1,1),ylim=c(0,2),xlab = "all 0 values")
+abline(v=0,col=2)
+plot(density(CC[,4]))
+abline(v=C[2,2],col=2)
+abline(v=-C[2,2],col=3)
+dev.off()
+#A
+pdf("density_A_negAC.pdf")
+par(mfrow=c(2,2))
+plot(density(AA[,1]))
+abline(v=A[1,1],col=2)
+abline(v=-A[1,1],col=3)
+plot(density(AA[,3]))
+abline(v=A[1,2],col=2)
+abline(v=-A[1,2],col=3)
+plot(density(AA[,2]))
+abline(v=A[2,1],col=2)
+abline(v=-A[2,1],col=3)
+plot(density(AA[,4]))
+abline(v=A[2,2],col=2)
+  
+abline(v=-A[2,2],col=3)
+dev.off()
+#B
+pdf("density_B_negAC.pdf")
+par(mfrow=c(2,2))
+x=seq(mean(BB[,1])-2,mean(BB[,1])+2,length=10000)
+y=dnorm(x,mean=mean(BB[,1]),sd=sd(BB[,1]))
+plot(x,y,type="l",ylim=c(0,3),col="3")
+lines(density(BB[,1]))
+abline(v=B[1,1],col=2)
+x=seq(mean(BB[,3])-2,mean(BB[,3])+2,length=10000)
+y=dnorm(x,mean=mean(BB[,3]),sd=sd(BB[,3]))
+plot(x,y,type="l",ylim=c(0,3),col="3")
+lines(density(BB[,3]))
+abline(v=B[1,2],col=2)
+x=seq(mean(BB[,2])-2,mean(BB[,2])+2,length=10000)
+y=dnorm(x,mean=mean(BB[,2]),sd=sd(BB[,2]))
+plot(x,y,type="l",ylim=c(0,3),col="3")
+abline(v=B[2,1],col=2)
+lines(density(BB[,2]))
+x=seq(mean(BB[,4])-2,mean(BB[,4])+2,length=10000)
+y=dnorm(x,mean=mean(BB[,4]),sd=sd(BB[,4]))
+plot(x,y,type="l",ylim=c(0,3),col="3")
+lines(density(BB[,4]))
+abline(v=B[2,2],col=2)
+dev.off()
+###########
+#6.2.3 neg BC
+#T=1000,R=500
+rm(list=ls())
+repe=500
+time=1200
+xx2=matrix(0,time,2*repe)
+#install.packages("matrixcalc")
+library(matrixcalc)
+
+sigma=matrix(0,time,2^2*repe)
+m <- 1
+repeat
+{
+#CTC=lower*upper
+#chol is upper
+C=-matrix(c(0.004,0,0.005,0.003), nrow = 2, ncol = 2) #upper
+CTC=t(C)%*%C
+C=chol(CTC)
+A=matrix(c(0.254,0.04,-0.004,0.332),2, ncol = 2)
+B=-matrix(c(0.941,-0.019,0.023,0.864),2,2)
+library(MASS)
+#set.seed(2)
+eta1=mvrnorm(n = 1, mu=rep(0, 2),Sigma=diag(c(1, 1)))
+sigma1=CTC
+svdH = svd(sigma1)
+sqrt.sigma1 = svdH$u %*% diag(sqrt(svdH$d)) %*% t(svdH$v)
+eta1=mvrnorm(n = 1, mu= rep(0, 2),Sigma=diag(c(1, 1)))
+u1=sqrt.sigma1%*%eta1
+xx2[1,((2*m-1):(2*m))]=u1
+sigma[1,((4*m-3):(4*m))]=as.vector(sigma1)
+for (i in (2:time))
+{
+sigma2=CTC+t(A)%*%u1%*%t(u1)%*%A+t(B)%*%sigma1%*%B
+svdH = svd(sigma2)
+sqrt.sigma2 = svdH$u %*% diag(sqrt(svdH$d)) %*% t(svdH$v)
+eta2=mvrnorm(n = 1, mu=rep(0, 2), Sigma=diag(c(1, 1)))
+u2=sqrt.sigma2%*%eta2
+xx2[i,((2*m-1):(2*m))]=u2
+sigma[i,((4*m-3):(4*m))]=as.vector(sigma2)
+sigma1=sigma2
+u1=u2
+}
+# print(m)
+m = m+1
+if (m == repe+1)
+{
+break
+}
+}
+
+burn=200
+real_sigma=sigma[((burn+1):time),]
+real_xx2=xx2[((burn+1):time),]
+write.table(real_xx2,"2D real series with repetition negCB.csv",sep=",",row.names = FALSE)
+xx2=read.csv("2D real series with repetition negCB.csv")
+xx2=as.matrix(xx2)
+write.table(real_sigma,"2D real Sigma at different time with repetition negCB.csv",sep=",",row.names = FALSE)
+true_sigma=read.csv("2D real Sigma at different time with repetition negCB.csv")
+true_sigma=as.matrix(true_sigma)
+realT=1000
+repe=500
+library(tseries)
+library(mvtnorm)
+library(mgarchBEKK)
+C=matrix(0,2,2*repe)
+A=matrix(0,2,2*repe)
+B=matrix(0,2,2*repe)
+sigma_hat=matrix(0,realT,4*repe)
+series_hat=matrix(0,realT,2*repe)
+e=1
+repeat
+{
+resbs= BEKK(xx2[,((2*e-1):(2*e))], order=c(1,1))
+for (i in 1:realT)
+{
+sigma_hat[i,((4*e-3):(4*e))]=resbs$H.estimated[[i]] ##estimate sigma
+}
+C[,((2*e-1):(2*e))]=resbs$est.params$‘1‘
+A[,((2*e-1):(2*e))]=resbs$est.params$‘2‘
+B[,((2*e-1):(2*e))]=resbs$est.params$‘3‘
+print(e)
+e= e+1
+if (e == repe+1)
+{
+break
+}
+}
+CC=AA=BB=matrix(0,repe,4)
+for (i in 1:repe)
+  {
+CC[i,]=as.vector(C[,((2*i-1):(2*i))])
+AA[i,]=as.vector(A[,((2*i-1):(2*i))])
+BB[i,]=as.vector(B[,((2*i-1):(2*i))])
+}
+write.table(CC,"Estimation of C negCB.csv",sep=",",row.names = FALSE)
+CC=read.csv("Estimation of C negCB.csv")
+CC=as.matrix(CC)
+write.table(AA,"Estimation of A negCB.csv",sep=",",row.names = FALSE)
+AA=read.csv("Estimation of A negCB.csv")
+AA=as.matrix(AA)
+write.table(BB,"Estimation of B negCB.csv",sep=",",row.names = FALSE)
+BB=read.csv("Estimation of B negCB.csv")
+BB=as.matrix(BB)
+write.table(sigma_hat,"2D Sigma hat at different time with repetition negCB.csv",sep=",",row.names = FALSE)
+sigma_hat=read.csv("2D Sigma hat at different time with repetition negCB.csv")
+sigma_hat=as.matrix(sigma_hat)
+C=-matrix(c(0.004,0,0.005,0.003), nrow = 2, ncol = 2) #upper
+A=matrix(c(0.254,0.04,-0.004,0.332),2, ncol = 2)
+B=-matrix(c(0.941,-0.019,0.023,0.864),2,2)
+#C
+pdf("density_C_negCB.pdf")
+par(mfrow=c(2,2))
+plot(density(CC[,1]))
+abline(v=C[1,1],col=2)
+abline(v=-C[1,1],col=3)
+plot(density(CC[,3]))
+abline(v= C[1,2],col=2)
+abline(v= -C[1,2],col=3)
+plot(rep(0,100),rep(0,100),type="l",xlim=c(-1,1),ylim=c(0,2),xlab = "all 0 values")
+abline(v=0,col=2)
+plot(density(CC[,4]))
+abline(v=C[2,2],col=2)
+abline(v=-C[2,2],col=3)
+dev.off()
+#A
+pdf("density_A_negCB.pdf")
+par(mfrow=c(2,2))
+plot(density(AA[,1]))
+abline(v=A[1,1],col=2)
+abline(v=-A[1,1],col=3)
+plot(density(AA[,3]))
+abline(v=A[1,2],col=2)
+abline(v=-A[1,2],col=3)
+plot(density(AA[,2]))
+abline(v=A[2,1],col=2)
+abline(v=-A[2,1],col=3)
+plot(density(AA[,4]))
+abline(v=A[2,2],col=2)
+abline(v=-A[2,2],col=3)
+dev.off()
+#B
+pdf("density_B_negCB.pdf")
+par(mfrow=c(2,2))
+x=seq(mean(BB[,1])-2,mean(BB[,1])+2,length=10000)
+y=dnorm(x,mean=mean(BB[,1]),sd=sd(BB[,1]))
+plot(x,y,type="l",ylim=c(0,3),col="3")
+lines(density(BB[,1]))
+abline(v=B[1,1],col=2)
+x=seq(mean(BB[,3])-2,mean(BB[,3])+2,length=10000)
+y=dnorm(x,mean=mean(BB[,3]),sd=sd(BB[,3]))
+plot(x,y,type="l",ylim=c(0,3),col="3")
+lines(density(BB[,3]))
+abline(v=B[1,2],col=2)
+x=seq(mean(BB[,2])-2,mean(BB[,2])+2,length=10000)
+y=dnorm(x,mean=mean(BB[,2]),sd=sd(BB[,2]))
+plot(x,y,type="l",ylim=c(0,3),col="3")
+abline(v=B[2,1],col=2)
+lines(density(BB[,2]))
+x=seq(mean(BB[,4])-2,mean(BB[,4])+2,length=10000)
+y=dnorm(x,mean=mean(BB[,4]),sd=sd(BB[,4]))
+plot(x,y,type="l",ylim=c(0,3),col="3")
+lines(density(BB[,4]))
+abline(v=B[2,2],col=2)
+dev.off()
+#neg ABC
+#T=1000,R=500
+rm(list=ls())
+repe=500
+time=1200
+xx2=matrix(0,time,2*repe)
+sigma=matrix(0,time,2^2*repe)
+m <- 1
+repeat
+{
+#CTC=lower*upper
+#chol is upper
+C=-matrix(c(0.004,0,0.005,0.003), nrow = 2, ncol = 2) #upper
+CTC=t(C)%*%C
+C=chol(CTC)
+A=-matrix(c(0.254,0.04,-0.004,0.332),2, ncol = 2)
+B=-matrix(c(0.941,-0.019,0.023,0.864),2,2)
+library(MASS)
+#set.seed(2)
+eta1=mvrnorm(n = 1, mu=rep(0, 2),Sigma=diag(c(1, 1)))
+sigma1=CTC
+svdH = svd(sigma1)
+sqrt.sigma1 = svdH$u %*% diag(sqrt(svdH$d)) %*% t(svdH$v)
+eta1=mvrnorm(n = 1, mu= rep(0, 2),Sigma=diag(c(1, 1)))
+u1=sqrt.sigma1%*%eta1
+xx2[1,((2*m-1):(2*m))]=u1
+sigma[1,((4*m-3):(4*m))]=as.vector(sigma1)
+for (i in (2:time))
+{
+sigma2=CTC+t(A)%*%u1%*%t(u1)%*%A+t(B)%*%sigma1%*%B
+svdH = svd(sigma2)
+sqrt.sigma2 = svdH$u %*% diag(sqrt(svdH$d)) %*% t(svdH$v)
+eta2=mvrnorm(n = 1, mu=rep(0, 2), Sigma=diag(c(1, 1)))
+u2=sqrt.sigma2%*%eta2
+xx2[i,((2*m-1):(2*m))]=u2
+sigma[i,((4*m-3):(4*m))]=as.vector(sigma2)
+sigma1=sigma2
+u1=u2
+}
+# print(m)
+m = m+1
+  if (m == repe+1)
+{
+break
+}
+}
+burn=200
+real_sigma=sigma[((burn+1):time),]
+real_xx2=xx2[((burn+1):time),]
+write.table(real_xx2,"2D real series with repetition negABC.csv",sep=",",row.names = FALSE)
+xx2=read.csv("2D real series with repetition negABC.csv")
+xx2=as.matrix(xx2)
+write.table(real_sigma,"2D real Sigma at different time with repetition negABC.csv",sep=",",row.names = FALSE)
+true_sigma=read.csv("2D real Sigma at different time with repetition negABC.csv")
+true_sigma=as.matrix(true_sigma)
+realT=1000
+repe=500
+library(tseries)
+library(mvtnorm)
+library(mgarchBEKK)
+C=matrix(0,2,2*repe)
+A=matrix(0,2,2*repe)
+B=matrix(0,2,2*repe)
+sigma_hat=matrix(0,realT,4*repe)
+series_hat=matrix(0,realT,2*repe)
+e=1
+repeat
+{
+resbs= BEKK(xx2[,((2*e-1):(2*e))], order=c(1,1))
+for (i in 1:realT)
+{
+sigma_hat[i,((4*e-3):(4*e))]=resbs$H.estimated[[i]] ##estimate sigma
+}
+C[,((2*e-1):(2*e))]=resbs$est.params$‘1‘
+A[,((2*e-1):(2*e))]=resbs$est.params$‘2‘
+B[,((2*e-1):(2*e))]=resbs$est.params$‘3‘
+print(e)
+e= e+1
+if (e == repe+1)
+{
+break
+  }
+}
+CC=AA=BB=matrix(0,repe,4)
+for (i in 1:repe)
+{
+CC[i,]=as.vector(C[,((2*i-1):(2*i))])
+AA[i,]=as.vector(A[,((2*i-1):(2*i))])
+BB[i,]=as.vector(B[,((2*i-1):(2*i))])
+}
+#write.table(CC,"Estimation of C negABC.csv",sep=",",row.names = FALSE)
+CC=read.csv("Estimation of C negABC.csv")
+CC=as.matrix(CC)
+#write.table(AA,"Estimation of A negABC.csv",sep=",",row.names = FALSE)
+AA=read.csv("Estimation of A negABC.csv")
+AA=as.matrix(AA)
+#write.table(BB,"Estimation of B negABC.csv",sep=",",row.names = FALSE)
+BB=read.csv("Estimation of B negABC.csv")
+BB=as.matrix(BB)
+#write.table(sigma_hat,"2D Sigma hat at different time with repetition negABC.csv",sep=",",row.names = FALSE)
+sigma_hat=read.csv("2D Sigma hat at different time with repetition negABC.csv")
+sigma_hat=as.matrix(sigma_hat)
+C=-matrix(c(0.004,0,0.005,0.003), nrow = 2, ncol = 2) #upper
+A=-matrix(c(0.254,0.04,-0.004,0.332),2, ncol = 2)
+B=-matrix(c(0.941,-0.019,0.023,0.864),2,2)
+#C
+pdf("density_C_negABC.pdf")
+par(mfrow=c(2,2))
+plot(density(CC[,1]))
+abline(v=C[1,1],col=2)
+abline(v=-C[1,1],col=3)
+plot(density(CC[,3]))
+abline(v= C[1,2],col=2)
+abline(v= -C[1,2],col=3)
+plot(rep(0,100),rep(0,100),type="l",xlim=c(-1,1),ylim=c(0,2),xlab = "all 0 values")
+abline(v=0,col=2)
+plot(density(CC[,4]))
+abline(v=C[2,2],col=2)
+abline(v=-C[2,2],col=3)
+dev.off()
+#A
+pdf("density_A_negABC.pdf")
+par(mfrow=c(2,2))
+plot(density(AA[,1]))
+abline(v=A[1,1],col=2)
+abline(v=-A[1,1],col=3)
+plot(density(AA[,3]))
+abline(v=A[1,2],col=2)
+abline(v=-A[1,2],col=3)
+plot(density(AA[,2]))
+abline(v=A[2,1],col=2)
+abline(v=-A[2,1],col=3)
+plot(density(AA[,4]))
+abline(v=A[2,2],col=2)
+abline(v=-A[2,2],col=3)
+dev.off()
+#B
+pdf("density_B_negABC.pdf")
+par(mfrow=c(2,2))
+x=seq(mean(BB[,1])-2,mean(BB[,1])+2,length=10000)
+y=dnorm(x,mean=mean(BB[,1]),sd=sd(BB[,1]))
+plot(x,y,type="l",ylim=c(0,3),col="3")
+lines(density(BB[,1]))
+abline(v=B[1,1],col=2)
+x=seq(mean(BB[,3])-2,mean(BB[,3])+2,length=10000)
+y=dnorm(x,mean=mean(BB[,3]),sd=sd(BB[,3]))
+plot(x,y,type="l",ylim=c(0,3),col="3")
+lines(density(BB[,3]))
+abline(v=B[1,2],col=2)
+x=seq(mean(BB[,2])-2,mean(BB[,2])+2,length=10000)
+y=dnorm(x,mean=mean(BB[,2]),sd=sd(BB[,2]))
+plot(x,y,type="l",ylim=c(0,3),col="3")
+abline(v=B[2,1],col=2)
+lines(density(BB[,2]))
+x=seq(mean(BB[,4])-2,mean(BB[,4])+2,length=10000)
+y=dnorm(x,mean=mean(BB[,4]),sd=sd(BB[,4]))
+plot(x,y,type="l",ylim=c(0,3),col="3")
+lines(density(BB[,4]))
+abline(v=B[2,2],col=2)
+dev.off()
+###################
+#6.2 likelihood
+########6.2negative C
+CC=read.csv("Estimation_C.csv")
+CC=as.matrix(CC)
+AA=read.csv("Estimation_A.csv")
+AA=as.matrix(AA)
+BB=read.csv("Estimation_B.csv")
+BB=as.matrix(BB)
+sigma_hat=read.csv("2D_Sigma_hat.csv")
+sigma_hat=as.matrix(sigma_hat)
+true_sigma=read.csv("2D real Sigma at different time with repetition.csv")
+true_sigma=as.matrix(true_sigma)
+#likelihood function of CAB_hat
+realT=1000
+sumlogdist=0
+dist_sigma=0
+for (j in (1:repe))
+{
+for (i in 1: realT)
+{
+dist_sigma[i]=dist(matrix(sigma_hat[i,(4*j-3):(4*j)],2,2),method="euclidean")
+}
+sumlogdist[j]=sum(log(dist_sigma))
+}
+sumqua=0
+qua=0
+j=1
+for (j in (1:repe))
+{
+for (i in 1: realT)
+  {
+qua[i]=t(as.matrix(xx2[i,(2*j-1):(2*j)]))%*%solve(matrix(sigma_hat[i,(4*j-3):(4*j)],2,2))%*%as.matrix(xx2[i,(2*j-1):(2*j)])
+}
+sumqua[j]=sum(qua)
+}
+l=-2*realT/2*log(2*pi)-sumlogdist/2-sumqua/2
+##################
+#likelihood function of CAB true
+realT=1000
+sumlogdist=0
+dist_sigma=0
+for (j in (1:repe))
+{
+for (i in 1: realT)
+{
+dist_sigma[i]=dist(matrix(true_sigma[i,(4*j-3):(4*j)],2,2),method="euclidean")
+}
+sumlogdist[j]=sum(log(dist_sigma))
+}
+sumqua=0
+qua=0
+j=1
+for (j in (1:repe))
+{
+for (i in 1: realT)
+{
+qua[i]=t(as.matrix(xx2[i,(2*j-1):(2*j)]))%*%solve(matrix(true_sigma[i,(4*j-3):(4*j)],2,2))%*%as.matrix(xx2[i,(2*j-1):(2*j)])
+}
+sumqua[j]=sum(qua)
+}
+l_true=-2*realT/2*log(2*pi)-sumlogdist/2-sumqua/2
+diff=l_true-l
+plot.ts(diff)
+############
+xx2=read.csv("2D real series with repetition negAC.csv")
+xx2=as.matrix(xx2)
+sigmanegC=matrix (0,realT,4*repe)
+for (j in (1:repe))
+  {
+sigmanegC1=matrix(sigma_hat[1,((4*j-3):(4*j))],2,2)
+sigmanegC[1,((4*j-3):(4*j))]=sigmanegC1
+u1=xx2[1,(2*j-1):(2*j)]
+C=matrix(CC[1,],2,2)
+#A=abs(matrix(AA[1,],2,2))
+A=-matrix(AA[1,],2,2)
+B=matrix(BB[1,],2,2)
+for (i in (2:realT))
+{
+sigmanegC1=matrix(sigma_hat[(i-1),((4*j-3):(4*j))],2,2)
+u2=xx2[(i-1),(2*j-1):(2*j)]
+sigmanegC2=t(C)%*%C+t(A)%*%u1%*%t(u2)%*%A+t(B)%*%sigmanegC1%*%B
+sigmanegC[i,((4*j-3):(4*j))]=sigmanegC2
+}
+}
+sigma=matrix (0,realT,4*repe)
+for (j in (1:repe))
+{
+sigma1=matrix(sigma_hat[1,((4*j-3):(4*j))],2,2)
+sigma[1,((4*j-3):(4*j))]=sigma1
+u1=xx2[1,(2*j-1):(2*j)]
+C=matrix(CC[1,],2,2)
+#A=abs(matrix(AA[1,],2,2))
+A=matrix(AA[1,],2,2)
+B=matrix(BB[1,],2,2)
+for (i in (2:realT))
+{
+sigma1=matrix(sigma_hat[(i-1),((4*j-3):(4*j))],2,2)
+u2=xx2[(i-1),(2*j-1):(2*j)]
+sigma2=t(C)%*%C+t(A)%*%u1%*%t(u2)%*%A+t(B)%*%sigma1%*%B
+sigma[i,((4*j-3):(4*j))]=sigma2
+}
+}
+#######
+realT=1000
+sumlogdist=0
+dist_sigma=0
+for (j in (1:repe))
+  {
+for (i in 1: realT)
+{
+dist_sigma[i]=dist(matrix(sigma_hat[i,(4*j-3):(4*j)],2,2),method="euclidean")
+}
+sumlogdist[j]=sum(log(dist_sigma))
+}
+sumqua=0
+qua=0
+j=1
+for (j in (1:repe))
+{
+for (i in 1: realT)
+{
+qua[i]=t(as.matrix(xx2[i,(2*j-1):(2*j)]))%*%solve(matrix(sigma_hat[i,(4*j-3):(4*j)],2,2))%*%as.matrix(xx2[i,(2*j-1):(2*j)])
+}
+sumqua[j]=sum(qua)
+}
+l=-2*realT/2*log(2*pi)-sumlogdist/2-sumqua/2
+##################
+#likelihood function of CAB true
+realT=1000
+sumlogdist=0
+dist_sigma=0
+for (j in (1:repe))
+{
+for (i in 1: realT)
+{
+dist_sigma[i]=dist(matrix(sigmanegC[i,(4*j-3):(4*j)],2,2),method="euclidean")
+}
+sumlogdist[j]=sum(log(dist_sigma))
+}
+sumqua=0
+qua=0
+j=1
+for (j in (1:repe))
+{
+  for (i in 1: realT)
+{
+qua[i]=t(as.matrix(xx2[i,(2*j-1):(2*j)]))%*%solve(matrix(sigmanegC[i,(4*j-3):(4*j)],2,2))%*%as.matrix(xx2[i,(2*j-1):(2*j)])
+}
+sumqua[j]=sum(qua)
+}
+l_negC=-2*realT/2*log(2*pi)-sumlogdist/2-sumqua/2
+diff=l_negC-l
+plot.ts(diff)
+#######Section 7
+#boostrap GARCH
+###univariate
+#simulate univariate BEKK(1,1)
+#install.packages("fGARCH")
+rm(list=ls())
+library(fGarch)
+repe=500
+time=1000
+xx=matrix(0,time,repe)
+#install.packages("matrixcalc")
+library(matrixcalc)
+sigma=matrix(0,time,repe)
+m <- 1
+repeat
+{
+spec = garchSpec(model = list(omega = 1e-6, alpha = 0.1, beta = 0.8))
+x=garchSim(spec, n = time)
+xx[,m]=x$garch #series
+m = m+1
+if (m == repe+1)
+{
+break
+}
+}
+write.table(xx,"real series with repetition.csv",sep=",",row.names = FALSE)
+xx=read.csv("real series with repetition.csv")
+xx=as.matrix(xx)
+#a=garchFit(formula = ~ garch(1, 1), data =xx[,1], dist.est=T,include.mean=F)
+  #est=a@fit$coef
+repe=500
+para=matrix(0,repe,3)
+m <- 1
+repeat
+{
+fit1 <- garchFit(formula = ~ garch(1, 1), data =xx[,m], dist.est=T,include.mean=F)
+para[m,]=fit1@fit$coef
+m = m+1
+if (m == repe+1)
+{
+break
+}
+}
+para
+write.table(para,"para estimation MLE.csv",sep=",",row.names = FALSE)
+para=read.csv("para estimation MLE.csv")
+para=as.matrix(para)
+omega = 1e-6
+alpha = 0.1
+beta = 0.8
+pdf("density_univariateGARCH_parameters.pdf")
+par(mfrow=c(1,3))
+x=seq(mean(para[,1])-0.000004,mean(para[,1])+0.000004,length=1000)
+y=dnorm(x,mean=mean(para[,1]),sd=sd(para[,1]))
+plot(x,y,type="l",ylim=c(0,1200000),col="3")
+lines(density(para[,1]))
+abline(v=omega,col=2)
+x=seq(mean(para[,2])-0.2,mean(para[,2])+0.2,length=1000)
+y=dnorm(x,mean=mean(para[,2]),sd=sd(para[,2]))
+plot(x,y,type="l",ylim=c(0,14),col="3")
+lines(density(para[,2]))
+abline(v=alpha,col=2)
+x=seq(mean(para[,3])-0.5,mean(para[,3])+0.5,length=1000)
+y=dnorm(x,mean=mean(para[,3]),sd=sd(para[,3]))
+plot(x,y,type="l",ylim=c(0,7),col="3")
+lines(density(para[,3]))
+abline(v=beta,col=2)
+dev.off()
+#start bootstrap
+rm(list=ls())
+library(fGarch)
+repe=500
+time=1000
+xx=read.csv("real series with repetition.csv")
+xx=as.matrix(xx)
+#####bootstrap b=25
+library(tseries)
+newxx=tsbootstrap(xx[,1], m=1, b=25, type="block", nb=500) #500 colunm repe time,1000 observation
+para=matrix(0,500,3)
+for (i in 1:repe)
+{
+fit1 <- garchFit(formula = ~ garch(1, 1), data =newxx[,i], dist.est=T,include.mean=F)
+para[i,]=fit1@fit$coef
+}
+para
+write.table(para,"para estimation b=25.csv",sep=",",row.names = FALSE)
+para=read.csv("para estimation b=25.csv")
+para=as.matrix(para)
+omega = 1e-6
+alpha = 0.1
+beta = 0.8
+pdf("density_blockbootstrap_b=25_simulate_univariateGARCH_parameters.pdf")
+par(mfrow=c(1,3))
+plot(density(para[,1]))
+abline(v=omega,col=2)
+abline(v=1.696059e-06,col=4)
+x=seq(mean(para[,1])-0.002,mean(para[,1])+0.002,length=100000)
+y=dnorm(x,mean=mean(para[,1]),sd=sd(para[,1]))
+lines(x,y,type="l",col="3")
+plot(density(para[,2]))
+abline(v=alpha,col=2)
+abline(v=1.033681e-01,col=4)
+x=seq(mean(para[,2])-0.05,mean(para[,2])+0.05,length=100000)
+y=dnorm(x,mean=mean(para[,2]),sd=sd(para[,2]))
+lines(x,y,type="l",col="3")
+  plot(density(para[,3]))
+abline(v=beta,col=2)
+abline(v=7.403620e-01,col=4)
+x=seq(mean(para[,3])-0.5,mean(para[,3])+0.5,length=100000)
+y=dnorm(x,mean=mean(para[,3]),sd=sd(para[,3]))
+lines(x,y,type="l",col="3")
+dev.off()
+maxom=mean(para[,1])
+maxal=mean(para[,2])
+maxbe=mean(para[,3])
+c(maxom-omega,maxal-alpha,maxbe-beta)
+#####bootstrap b=50
+#install.packages("boot")
+library(tseries)
+newxx=tsbootstrap(xx[,1], m=1, b=50, type="block", nb=500) #500 colunm repe time,1000 observation
+para=matrix(0,repe,3)
+m <- 1
+repeat
+{
+fit1 <- garchFit(formula = ~ garch(1, 1), data =newxx[,m], dist.est=T,include.mean=F)
+para[m,]=fit1@fit$coef
+m = m+1
+if (m == repe+1)
+{
+break
+}
+}
+para
+write.table(para,"para estimation b=50.csv",sep=",",row.names = FALSE)
+para=read.csv("para estimation b=50.csv")
+para=as.matrix(para)
+pdf("density_blockbootstrap_b=50_simulate_univariateGARCH_parameters.pdf")
+par(mfrow=c(1,3))
+plot(density(para[,1]))
+abline(v=omega,col=2)
+abline(v=1.696059e-06,col=4)
+x=seq(mean(para[,1])-0.002,mean(para[,1])+0.002,length=100000)
+y=dnorm(x,mean=mean(para[,1]),sd=sd(para[,1]))
+lines(x,y,type="l",col="3")
+  plot(density(para[,2]))
+abline(v=alpha,col=2)
+abline(v=1.033681e-01,col=4)
+x=seq(mean(para[,2])-0.05,mean(para[,2])+0.05,length=100000)
+y=dnorm(x,mean=mean(para[,2]),sd=sd(para[,2]))
+lines(x,y,type="l",col="3")
+plot(density(para[,3]))
+abline(v=beta,col=2)
+abline(v=7.403620e-01,col=4)
+x=seq(mean(para[,3])-0.5,mean(para[,3])+0.5,length=100000)
+y=dnorm(x,mean=mean(para[,3]),sd=sd(para[,3]))
+lines(x,y,type="l",col="3")
+dev.off()
+maxom=mean(para[,1])
+maxal=mean(para[,2])
+maxbe=mean(para[,3])
+c(maxom-omega,maxal-alpha,maxbe-beta)
+#####bootstrap b=75
+#install.packages("boot")
+library(tseries)
+newxx=tsbootstrap(xx[,1], m=1, b=75, type="block", nb=500) #500 colunm repe time,1000 observation
+para=matrix(0,repe,3)
+m <- 1
+repeat
+{
+fit1 <- garchFit(formula = ~ garch(1, 1), data =newxx[,m], dist.est=T,include.mean=F)
+para[m,]=fit1@fit$coef
+m = m+1
+if (m == repe+1)
+{
+break
+}
+}
+para
+write.table(para,"para estimation b=75.csv",sep=",",row.names = FALSE)
+para=read.csv("para estimation b=75.csv")
+para=as.matrix(para)
+pdf("density_blockbootstrap_b=75_simulate_univariateGARCH_parameters.pdf")
+  par(mfrow=c(1,3))
+plot(density(para[,1]))
+abline(v=omega,col=2)
+abline(v=1.696059e-06,col=4)
+x=seq(mean(para[,1])-0.002,mean(para[,1])+0.002,length=100000)
+y=dnorm(x,mean=mean(para[,1]),sd=sd(para[,1]))
+lines(x,y,type="l",col="3")
+plot(density(para[,2]))
+abline(v=alpha,col=2)
+abline(v=1.033681e-01,col=4)
+x=seq(mean(para[,2])-0.05,mean(para[,2])+0.05,length=100000)
+y=dnorm(x,mean=mean(para[,2]),sd=sd(para[,2]))
+lines(x,y,type="l",col="3")
+plot(density(para[,3]))
+abline(v=beta,col=2)
+abline(v=7.403620e-01,col=4)
+x=seq(mean(para[,3])-0.5,mean(para[,3])+0.5,length=100000)
+y=dnorm(x,mean=mean(para[,3]),sd=sd(para[,3]))
+lines(x,y,type="l",col="3")
+dev.off()
+maxom=mean(para[,1])
+maxal=mean(para[,2])
+maxbe=mean(para[,3])
+c(maxom-omega,maxal-alpha,maxbe-beta)
+#####################
+#bootstrap based on standardized distribution
+xx=read.csv("real series with repetition.csv")
+xx=as.matrix(xx)
+#head(xx) #R=500 #500 columns simulation process T=1000
+#xx[,1]
+a=garchFit(formula = ~ garch(1, 1), data =xx[,1], dist.est=T,include.mean=F)
+est=a@fit$coef #estimator series
+sighat=a@sigma.t
+eta=0
+for (i in 1:1000)
+{
+eta[i]=xx[i,1]/sighat[i]
+  }
+neweta=tsbootstrap(eta, m=1, b=25, type="block", nb=500) #500 colunm repe time,1000 observation
+newseries=matrix(0,1000,500)
+for (j in 1:500)
+{
+for (i in 1:1000)
+{
+newseries[i,j]=neweta[i,j]*sighat[i]
+}
+}
+s=garchFit(formula = ~ garch(1, 1), data =newseries[,1], dist.est=T,include.mean=F)
+s@fit$coef
+para=matrix(0,500,3)
+for (i in 1:500)
+{
+fit1 <- garchFit(formula = ~ garch(1, 1), data =newseries[,i], dist.est=T,include.mean=F)
+para[i,]=fit1@fit$coef
+}
+para
+#show eta follows N(0,1)
+eta=0
+for (i in 1:1000)
+{
+eta[i]=xx[i,1]/sighat[i]
+}
+pdf("sd_normal_qqplot.pdf")
+qqnorm(eta)
+qqline(eta) ##dignostic check eta from N(0,1)
+dev.off()
+mean(eta)
+var(eta)
+plot.ts(series.sim)
+write.table(para,"standerdized para estimation b=25.csv",sep=",",row.names = FALSE)
+para=read.csv("standerdized para estimation b=25.csv")
+para=as.matrix(para)
+omega = 1e-6
+alpha = 0.1
+beta = 0.8
+pdf("sd_density_blockbootstrap_b=25_simulate_univariateGARCH_parameters.pdf")
+  par(mfrow=c(1,3))
+#x=seq(mean(para[,1])-0.2,mean(para[,1])+0.2,length=1000)
+#y=dnorm(x,mean=mean(para[,1]),sd=sd(para[,1]))
+#plot(x,y,type="l",ylim=c(0,20),col="3")
+plot(density(para[,1]))
+abline(v=omega,col=2)
+abline(v=s@fit$coef[1],col=4)
+plot(density(para[,2]))
+abline(v=alpha,col=2)
+abline(v=s@fit$coef[2],col=4)
+plot(density(para[,3]))
+abline(v=beta,col=2)
+abline(v=s@fit$coef[3],col=4)
+dev.off()
+maxom=density(para[,1])$x[which.max(density(para[,1])$y)]
+maxal=density(para[,2])$x[which.max(density(para[,2])$y)]
+maxbe=density(para[,3])$x[which.max(density(para[,3])$y)]
+c(maxom-omega,maxal-alpha,maxbe-beta)
+maxom=mean(para[,1])
+maxal=mean(para[,2])
+maxbe=mean(para[,3])
+c(maxom-omega,maxal-alpha,maxbe-beta)
+#####bootstrap b=50
+library(tseries)
+neweta=tsbootstrap(eta, m=1, b=50, type="block", nb=500) #500 colunm repe time,1000 observation
+newseries=matrix(0,1000,500)
+for (j in 1:500)
+{
+for (i in 1:1000)
+{
+newseries[i,j]=neweta[i,j]*sighat[i]
+}
+}
+s=garchFit(formula = ~ garch(1, 1), data =newseries[,1], dist.est=T,include.mean=F)
+s@fit$coef
+para=matrix(0,500,3)
+for (i in 1:500)
+{
+fit1 <- garchFit(formula = ~ garch(1, 1), data =newseries[,i], dist.est=T,include.mean=F)
+para[i,]=fit1@fit$coef
+}
+para
+write.table(para,"standerdized para estimation b=50.csv",sep=",",row.names = FALSE)
+para=read.csv("standerdized para estimation b=50.csv")
+para=as.matrix(para)
+pdf("sd_density_blockbootstrap_b=50_simulate_univariateGARCH_parameters.pdf")
+par(mfrow=c(1,3))
+#x=seq(mean(para[,1])-0.2,mean(para[,1])+0.2,length=1000)
+#y=dnorm(x,mean=mean(para[,1]),sd=sd(para[,1]))
+#plot(x,y,type="l",ylim=c(0,20),col="3")
+plot(density(para[,1]))
+abline(v=omega,col=2)
+abline(v=s@fit$coef[1],col=4)
+plot(density(para[,2]))
+abline(v=alpha,col=2)
+abline(v=s@fit$coef[2],col=4)
+plot(density(para[,3]))
+abline(v=beta,col=2)
+abline(v=s@fit$coef[3],col=4)
+dev.off()
+maxom=mean(para[,1])
+maxal=mean(para[,2])
+maxbe=mean(para[,3])
+c(maxom-omega,maxal-alpha,maxbe-beta)
+#####bootstrap b=75
+library(tseries)
+neweta=tsbootstrap(eta, m=1, b=75, type="block", nb=500) #500 colunm repe time,1000 observation
+newseries=matrix(0,1000,500)
+for (j in 1:500)
+{
+for (i in 1:1000)
+{
+newseries[i,j]=neweta[i,j]*sighat[i]
+}
+}
+s=garchFit(formula = ~ garch(1, 1), data =newseries[,1], dist.est=T,include.mean=F)
+s@fit$coef
+para=matrix(0,500,3)
+for (i in 1:500)
+{
+fit1 <- garchFit(formula = ~ garch(1, 1), data =newseries[,i], dist.est=T,include.mean=F)
+para[i,]=fit1@fit$coef
+}
+para
+write.table(para,"standerdized para estimation b=75.csv",sep=",",row.names = FALSE)
+para=read.csv("standerdized para estimation b=75.csv")
+para=as.matrix(para)
+pdf("sd_density_blockbootstrap_b=75_simulate_univariateGARCH_parameters.pdf")
+par(mfrow=c(1,3))
+#x=seq(mean(para[,1])-0.2,mean(para[,1])+0.2,length=1000)
+#y=dnorm(x,mean=mean(para[,1]),sd=sd(para[,1]))
+#plot(x,y,type="l",ylim=c(0,20),col="3")
+plot(density(para[,1]))
+abline(v=omega,col=2)
+abline(v=s@fit$coef[1],col=4)
+plot(density(para[,2]))
+abline(v=alpha,col=2)
+abline(v=s@fit$coef[2],col=4)
+plot(density(para[,3]))
+abline(v=beta,col=2)
+abline(v=s@fit$coef[3],col=4)
+dev.off()
+maxom=mean(para[,1])
+maxal=mean(para[,2])
+maxbe=mean(para[,3])
+c(maxom-omega,maxal-alpha,maxbe-beta)
+################model based bootstrap
+lynx.fun <- function(tsb) {
+# ar.fit <- ar(tsb, order.max = 25)
+c(tsb)
+# c(ar.fit$order, mean(tsb), tsb)
+}
+# the fixed block bootstrap with length 20
+lynx.2 <- tsboot(xx[,1], lynx.fun, R =500, l = 25, sim = "fixed")
+newxx=lynx.2$t
+repe=500
+para=matrix(0,repe,3)
+m <- 1
+repeat
+{
+fit1 <- garchFit(formula = ~ garch(1, 1), data =newxx[m,], dist.est=T,include.mean=F)
+para[m,]=fit1@fit$coef
+m = m+1
+if (m == repe+1)
+{
+break
+}
+}
+para
+omega = 1e-6
+alpha = 0.1
+beta = 0.8
+#pdf("density plot of block bootstrap b=20 simulate univariate GARCH parameters.pdf")
+par(mfrow=c(1,3))
+#x=seq(mean(para[,1])-0.2,mean(para[,1])+0.2,length=1000)
+#y=dnorm(x,mean=mean(para[,1]),sd=sd(para[,1]))
+#plot(x,y,type="l",ylim=c(0,20),col="3")
+plot(density(para[,1]))
+abline(v=omega,col=2)
+abline(v=1.696059e-06,col=4)
+plot(density(para[,2]))
+abline(v=alpha,col=2)
+abline(v=1.033681e-01,col=4)
+plot(density(para[,3]))
+#max <- which.max(density(para[,3])$y)
+#density(para[,3])$x[max]
+abline(v=beta,col=2)
+abline(v=7.403620e-01,col=4)
+#dev.off()
+#Multivariate bootstrap GARCH
+#B=25
+rm(list=ls())
+#write.table(real_xx2,"2D real series with repetition.csv",sep=",",row.names = FALSE)
+xx2=read.csv("2D real series with repetition.csv")
+xx2=as.matrix(xx2)
+#write.table(real_sigma,"2D real Sigma at different time with repetition.csv",sep=",",row.names = FALSE)
+true_sigma=read.csv("2D real Sigma at different time with repetition.csv")
+true_sigma=as.matrix(true_sigma)
+#install.packages("timesboot")
+library(timesboot)
+#install.packages("boot")
+library(boot)
+lynx.fun <- function(tsb) {
+# ar.fit <- ar(tsb, order.max = 25)
+tsb
+#c(tsb)
+# c(ar.fit$order, mean(tsb), tsb)
+}
+# the fixed block bootstrap with length 20
+#xx2=matrix(0,1000,2)
+#xx2[,1]=rnorm(1000,3,2)
+#xx2[,2]=rnorm(1000,0,0.5)
+repe=500
+lynx.2 <- tsboot(xx2[,1:2], lynx.fun, R=repe, l = 25, sim = "fixed",n.sim = 5000)
+#install.packages("mgarchBEKK")
+library(mgarchBEKK)
+library(mvtnorm)
+resbs= BEKK(xx2[,1:2], order=c(1,1))
+c=resbs$est.params$‘1‘
+a=resbs$est.params$‘2‘
+b=resbs$est.params$‘3‘
+realT=5000
+library(tseries)
+library(mvtnorm)
+library(mgarchBEKK)
+C=matrix(0,2,2*repe)
+A=matrix(0,2,2*repe)
+B=matrix(0,2,2*repe)
+  sigma_hat=matrix(0,realT,4*repe)
+series_hat=matrix(0,realT,2*repe)
+e=1
+repeat
+{
+newxx2=lynx.2$t[e,]
+newxx2=matrix(newxx2,5000,2)
+resbs= BEKK(newxx2[,1:2], order=c(1,1))
+for (i in 1:realT)
+{
+sigma_hat[i,((4*e-3):(4*e))]=resbs$H.estimated[[i]] ##estimate sigma
+}
+#series_hat[,((2*e-1):(2*e))]=resbs$eps #original data
+#plot(density(resbs$residuals[[2]])) #residuals is eta
+#var((resbs$residuals[[2]]))
+#mean((resbs$residuals[[2]]))
+C[,((2*e-1):(2*e))]=resbs$est.params$‘1‘
+A[,((2*e-1):(2*e))]=resbs$est.params$‘2‘
+B[,((2*e-1):(2*e))]=resbs$est.params$‘3‘
+print(e)
+e= e+1
+if (e == repe+1)
+{
+break
+}
+}
+CC=AA=BB=matrix(0,repe,4)
+for (i in 1:repe)
+{
+CC[i,]=as.vector(C[,((2*i-1):(2*i))])
+AA[i,]=as.vector(A[,((2*i-1):(2*i))])
+BB[i,]=as.vector(B[,((2*i-1):(2*i))])
+}
+write.table(CC,"Bootstrap25Estimation of C.csv",sep=",",row.names = FALSE)
+CC=read.csv("Bootstrap25Estimation of C.csv")
+CC=as.matrix(CC)
+write.table(AA,"Bootstrap25Estimation of A.csv",sep=",",row.names = FALSE)
+AA=read.csv("Bootstrap25Estimation of A.csv")
+AA=as.matrix(AA)
+write.table(BB,"Bootstrap25Estimation of B.csv",sep=",",row.names = FALSE)
+BB=read.csv("Bootstrap25Estimation of B.csv")
+BB=as.matrix(BB)
+write.table(sigma_hat,"Bootstrap25 Sigma hat at different time with repetition negC.csv",sep=",",row.names = FALSE)
+sigma_hat=read.csv("Bootstrap25 Sigma hat at different time with repetition negC.csv")
+sigma_hat=as.matrix(sigma_hat)
+resbs= BEKK(xx2[,1:2], order=c(1,1))
+c=resbs$est.params$‘1‘
+a=resbs$est.params$‘2‘
+b=resbs$est.params$‘3‘
+C=matrix(c(0.004,0,0.005,0.003), nrow = 2, ncol = 2) #upper
+pdf("bootstrap25C.pdf")
+par(mfrow=c(2,2))
+plot(density(CC[,1]))
+abline(v=C[1,1],col=2)
+abline(v=-C[1,1],col=3)
+abline(v=c[1,1],col=4)
+plot(density(CC[,3]))
+abline(v= C[1,2],col=2)
+abline(v= -C[1,2],col=3)
+abline(v= c[1,2],col=4)
+plot(rep(0,100),rep(0,100),type="l",xlim=c(-1,1),ylim=c(0,2),xlab = "all 0 values")
+abline(v=0,col=2)
+plot(density(CC[,4]))
+abline(v=C[2,2],col=2)
+abline(v=-C[2,2],col=3)
+abline(v=c[2,2],col=4)
+dev.off()
+A=matrix(c(0.254,0.04,-0.004,0.332),2, ncol = 2)
+#############
+pdf("bootstrap25A.pdf")
+par(mfrow=c(2,2))
+plot(density(AA[,1]))
+abline(v=A[1,1],col=2)
+abline(v=-A[1,1],col=3)
+abline(v=a[1,1],col=4)
+plot(density(AA[,3]))
+abline(v=A[1,2],col=2)
+abline(v=-A[1,2],col=3)
+abline(v=a[1,2],col=4)
+plot(density(AA[,2]))
+abline(v=A[2,1],col=2)
+abline(v=-A[2,1],col=3)
+abline(v=a[2,1],col=4)
+plot(density(AA[,4]))
+abline(v=A[2,2],col=2)
+abline(v=-A[2,2],col=3)
+abline(v=a[2,2],col=4)
+dev.off()
+##################
+B=matrix(c(0.941,-0.019,0.023,0.864),2,2)
+pdf("bootstrap25B.pdf")
+par(mfrow=c(2,2))
+plot(density(BB[,1]))
+abline(v=B[1,1],col=2)
+abline(v=-B[1,1],col=3)
+abline(v=b[1,1],col=4)
+plot(density(BB[,3]))
+abline(v=B[1,2],col=2)
+abline(v=-B[1,2],col=3)
+abline(v=b[1,2],col=4)
+plot(density(BB[,2]))
+abline(v=B[2,1],col=2)
+abline(v=-B[2,1],col=3)
+abline(v=b[2,1],col=4)
+plot(density(BB[,4]))
+abline(v=B[2,2],col=2)
+abline(v=-B[2,2],col=3)
+abline(v=b[2,2],col=4)
+dev.off()
+####section 8
+repe=500
+time=1200
+xx2=matrix(0,time,2*repe)
+#install.packages("matrixcalc")
+library(matrixcalc)
+sigma=matrix(0,time,2^2*repe)
+A=matrix(c(0.478,-0.069,-0.024,0.724),2, ncol = 2)
+  B=matrix(c(0.852,-0.069,0.005,0.395),2,2)
+K1=kronecker(A, A)
+K2=kronecker(B, B)
+K=K1+K2
+eigen(K)
+m <- 1
+repeat
+{
+#CTC=lower*upper
+#chol is upper
+C=matrix(c(1.505,0,0.912,6.139), nrow = 2, ncol = 2) #upper
+CTC=t(C)%*%C
+C=chol(CTC)
+A=matrix(c(0.478,-0.069,-0.024,0.724),2, ncol = 2)
+B=matrix(c(0.852,-0.069,0.005,0.395),2,2)
+library(MASS)
+#set.seed(2)
+eta1=mvrnorm(n = 1, mu=rep(0, 2),Sigma=diag(c(1, 1)))
+sigma1=CTC
+svdH = svd(sigma1)
+sqrt.sigma1 = svdH$u %*% diag(sqrt(svdH$d)) %*% t(svdH$v)
+eta1=mvrnorm(n = 1, mu= rep(0, 2),Sigma=diag(c(1, 1)))
+u1=sqrt.sigma1%*%eta1
+xx2[1,((2*m-1):(2*m))]=u1
+sigma[1,((4*m-3):(4*m))]=as.vector(sigma1)
+for (i in (2:time))
+{
+sigma2=CTC+t(A)%*%u1%*%t(u1)%*%A+t(B)%*%sigma1%*%B
+svdH = svd(sigma2)
+sqrt.sigma2 = svdH$u %*% diag(sqrt(svdH$d)) %*% t(svdH$v)
+eta2=mvrnorm(n = 1, mu=rep(0, 2), Sigma=diag(c(1, 1)))
+u2=sqrt.sigma2%*%eta2
+xx2[i,((2*m-1):(2*m))]=u2
+sigma[i,((4*m-3):(4*m))]=as.vector(sigma2)
+sigma1=sigma2
+u1=u2
+}
+#print(m)
+m = m+1
+if (m == repe+1)
+  {
+break
+}
+}
+burn=200
+real_sigma=sigma[((burn+1):time),]
+real_xx2=xx2[((burn+1):time),]
+write.table(real_xx2,"2D real series with repetition.csv",sep=",",row.names = FALSE)
+xx2=read.csv("2D real series with repetition.csv")
+xx2=as.matrix(xx2)
+write.table(real_sigma,"2D real Sigma at different time with repetition.csv",sep=",",row.names = FALSE)
+true_sigma=read.csv("2D real Sigma at different time with repetition.csv")
+true_sigma=as.matrix(true_sigma)
+#########summary data pick 2
+summary(xx2[,1])
+var(xx2[,1])
+summary(xx2[,49])
+var(xx2[,49])
+summary(xx2[,2])
+var(xx2[,2])
+summary(xx2[,50])
+var(xx2[,50])
+qqnorm(xx2[,111:112])
+qqline(xx2[,111:112])
+#acf plot
+pdf("Acf plots for residuals.pdf")
+acf(xx2[,1:2],lag.max = 15)
+#acf(xx2[,49:50],lag.max = 15)
+dev.off()
+pdf("Acf plots for squared residuals.pdf")
+squ.residual1=xx2[,1:2]^2
+acf(squ.residual1,lag.max = 15)
+#squ.residual2=xx2[,49:50]^2
+#acf(squ.residual2,lag.max = 15)
+dev.off()
+pdf("simulation series.pdf")
+par(mfrow=c(2,1))
+plot.ts(xx2[,1],main="Time series of variable 1",ylab="V1",xlab="time",ylim = c(-40,40),col=1)
+lines(x=c(1:1000),xx2[,49],col=2)
+legend("topright", legend = c("data set 1","data set 2"),lty = 1, col = 1:2,cex = 0.5)
+plot.ts(xx2[,2],main="Time series of variable 2",ylab="V2",xlab="time",ylim = c(-40,40),col=1)
+lines(x=c(1:1000),xx2[,50],col=2)
+legend("topright", legend = c("data set 1","data set 2"),lty = 1, col = 1:2,cex = 0.5)
+dev.off()
+#ture condi covariance
+pdf("components of ture conditioanl covariance.pdf")
+par(mfrow=c(2,2))
+plot.ts(true_sigma[,1],col=1,ylab="V1")
+lines(x=c(1:1000),true_sigma[,197],col=2)
+plot.ts(true_sigma[,2],col=1,ylab="V1&V2")
+lines(x=c(1:1000),true_sigma[,198],col=2)
+plot.ts(true_sigma[,3],col=1,ylab="V1&V2")
+lines(x=c(1:1000),true_sigma[,199],col=2)
+plot.ts(true_sigma[,4],col=1,ylab="V2")
+lines(x=c(1:1000),true_sigma[,200],col=2)
+dev.off()
+#######ture distance
+realT=1000
+library(shapes)
+turecovdistance=0
+for (i in 1: realT)
+{
+turecovdistance[i]=distcov(matrix(true_sigma[i,1:4],2,2),matrix(true_sigma[i,197:200],2,2),method="Procrustes")
+}
+pdf("distance plot of ture covariance matrix between dataset1 and dataset2.pdf")
+plot.ts(turecovdistance,ylab="distance for covatiance")
+dev.off()
+######################
+#run with store values
+xx2=read.csv("2D real series with repetition.csv")
+xx2=as.matrix(xx2)
+true_sigma=read.csv("2D real Sigma at different time with repetition.csv")
+true_sigma=as.matrix(true_sigma)
+#estimation of parameters
+time=1200
+burn=200
+realT=time-burn
+#install.packages("mgarchBEKK")
+library(tseries)
+library(mvtnorm)
+library(mgarchBEKK)
+C=matrix(0,2,2*repe)
+A=matrix(0,2,2*repe)
+B=matrix(0,2,2*repe)
+sigma_hat=matrix(0,realT,4*repe)
+series_hat=matrix(0,realT,2*repe)
+e=1
+repeat
+{
+resbs= BEKK(xx2[,((2*e-1):(2*e))], order=c(1,1))
+for (i in 1:realT)
+{
+sigma_hat[i,((4*e-3):(4*e))]=resbs$H.estimated[[i]] ##estimate sigma
+}
+#series_hat[,((2*e-1):(2*e))]=resbs$eps #original data
+#plot(density(resbs$residuals[[2]])) #residuals is eta
+#var((resbs$residuals[[2]]))
+#mean((resbs$residuals[[2]]))
+C[,((2*e-1):(2*e))]=resbs$est.params$‘1‘
+A[,((2*e-1):(2*e))]=resbs$est.params$‘2‘
+B[,((2*e-1):(2*e))]=resbs$est.params$‘3‘
+print(e)
+e= e+1
+if (e == repe+1)
+{
+break
+}
+}
+CC=AA=BB=matrix(0,repe,4)
+for (i in 1:repe)
+{
+CC[i,]=as.vector(C[,((2*i-1):(2*i))])
+AA[i,]=as.vector(A[,((2*i-1):(2*i))])
+BB[i,]=as.vector(B[,((2*i-1):(2*i))])
+}
+write.table(CC,"Estimation of C.csv",sep=",",row.names = FALSE)
+CC=read.csv("Estimation of C.csv")
+CC=as.matrix(CC)
+write.table(AA,"Estimation of A.csv",sep=",",row.names = FALSE)
+AA=read.csv("Estimation of A.csv")
+AA=as.matrix(AA)
+write.table(BB,"Estimation of B.csv",sep=",",row.names = FALSE)
+BB=read.csv("Estimation of B.csv")
+BB=as.matrix(BB)
+write.table(sigma_hat,"2D Sigma hat at different time with repetition.csv",sep=",",row.names = FALSE)
+sigma_hat=read.csv("2D Sigma hat at different time with repetition.csv")
+sigma_hat=as.matrix(sigma_hat)
+###########
+C=matrix(c(1.505,0,0.912,6.139), nrow = 2, ncol = 2) #upper
+CTC=t(C)%*%C
+C=chol(CTC)
+A=matrix(c(0.478,-0.069,-0.024,0.724),2, ncol = 2)
+B=matrix(c(0.852,-0.069,0.005,0.395),2,2)
+pdf("density_C.pdf")
+par(mfrow=c(2,2))
+plot(density(CC[,1]))
+abline(v=C[1,1],col=2)
+abline(v=-C[1,1],col=3)
+plot(density(CC[,3]))
+abline(v= C[1,2],col=2)
+abline(v= -C[1,2],col=3)
+plot(rep(0,100),rep(0,100),type="l",xlim=c(-1,1),ylim=c(0,2),xlab = "all 0 values")
+abline(v=0,col=2)
+plot(density(CC[,4]))
+abline(v=C[2,2],col=2)
+abline(v=-C[2,2],col=3)
+dev.off()
+pdf("density_abs_C.pdf")
+par(mfrow=c(2,2))
+x=seq(mean(abs(CC[,1]))-2,mean(abs(CC[,1]))+2,length=10000)
+y=dnorm(x,mean=mean(abs(CC[,1])),sd=sd(abs(CC[,1])))
+plot(x,y,type="l",ylim=c(0,0.8),col="3")
+lines(density(abs(CC[,1])))
+#plot(density(abs(CC[,1])))
+abline(v=abs(C[1,1]),col=2)
+x=seq(mean(abs(CC[,3]))-4,mean(abs(CC[,3]))+4,length=10000)
+y=dnorm(x,mean=mean(abs(CC[,3])),sd=sd(abs(CC[,3])))
+plot(x,y,type="l",ylim=c(0,1),col="3")
+lines(density(abs(CC[,3])))
+abline(v=C[1,2],col=2)
+plot(rep(0,100),rep(0,100),type="l",xlim=c(-1,1),ylim=c(0,2),xlab = "all 0 values")
+abline(v=0,col=2)
+x=seq(mean(abs(CC[,4]))-4,mean(abs(CC[,4]))+4,length=10000)
+y=dnorm(x,mean=mean(abs(CC[,4])),sd=sd(abs(CC[,4])))
+plot(x,y,type="l",ylim=c(0,1),col="3")
+lines(density(abs(CC[,4])))
+abline(v=C[2,2],col=2)
+dev.off()
+repe=500
+d=2
+PC=PA=PB=matrix(0,d,d*repe) #combination of parameter matrix
+for (i in 1:repe)
+{
+PC[,((d*i-1):(d*i))]=(t(matrix(CC[i,],d,d)))%*%(matrix(CC[i,],d,d))
+PA[,((d*i-1):(d*i))]=(t(matrix(AA[i,],d,d)))%*%(matrix(AA[i,],d,d))
+PB[,((d*i-1):(d*i))]=(t(matrix(BB[i,],d,d)))%*%(matrix(BB[i,],d,d))
+}
+CTC=ATA=BTB=matrix(0,repe,d^2)
+for (i in 1:repe)
+{
+CTC[i,]=as.vector(PC[,((d*i-1):(d*i))])
+ATA[i,]=as.vector(PA[,((d*i-1):(d*i))])
+BTB[i,]=as.vector(PB[,((d*i-1):(d*i))])
+}
+Csqu=t(C)%*%C
+pdf("density_CTC.pdf")
+par(mfrow=c(2,2))
+plot(density(CTC[,1]))
+abline(v=Csqu[1,1],col=2)
+plot(density(CTC[,3]))
+abline(v=Csqu[1,2],col=2)
+plot(density(CTC[,2]))
+abline(v=Csqu[2,1],col=2)
+plot(density(CTC[,4]))
+abline(v=Csqu[2,2],col=2)
+dev.off()
+#A
+pdf("density_A.pdf")
+par(mfrow=c(2,2))
+plot(density(AA[,1]))
+abline(v=A[1,1],col=2)
+abline(v=-A[1,1],col=3)
+plot(density(AA[,3]))
+abline(v=A[1,2],col=2)
+abline(v=-A[1,2],col=3)
+plot(density(AA[,2]))
+abline(v=A[2,1],col=2)
+abline(v=-A[2,1],col=3)
+plot(density(AA[,4]))
+abline(v=A[2,2],col=2)
+abline(v=-A[2,2],col=3)
+dev.off()
+#############
+pdf("density_abs_A.pdf")
+par(mfrow=c(2,2))
+x=seq(mean(abs(AA[,1]))-0.7,mean(abs(AA[,1]))+0.7,length=10000)
+y=dnorm(x,mean=mean(abs(AA[,1])),sd=sd(abs(AA[,1])))
+plot(x,y,type="l",ylim=c(0,10),col="3")
+lines(density(abs(AA[,1])))
+abline(v=abs(A[1,1]),col=2)
+x=seq(mean(abs(AA[,3]))-0.7,mean(abs(AA[,3]))+0.7,length=10000)
+y=dnorm(x,mean=mean(abs(AA[,3])),sd=sd(abs(AA[,3])))
+plot(x,y,type="l",ylim=c(0,17),col="3")
+lines(density(abs(AA[,3])))
+abline(v=abs(A[1,2]),col=2)
+x=seq(mean(abs(AA[,2]))-0.7,mean(abs(AA[,2]))+0.7,length=10000)
+y=dnorm(x,mean=mean(abs(AA[,2])),sd=sd(abs(AA[,2])))
+plot(x,y,type="l",ylim=c(0,10),col="3")
+lines(density(abs(AA[,2])))
+abline(v=abs(A[2,1]),col=2)
+x=seq(mean(abs(AA[,4]))-0.7,mean(abs(AA[,4]))+0.7,length=10000)
+y=dnorm(x,mean=mean(abs(AA[,4])),sd=sd(abs(AA[,4])))
+plot(x,y,type="l",ylim=c(0,10),col="3")
+lines(density(abs(AA[,4])))
+abline(v=abs(A[2,2]),col=2)
+dev.off()
+######
+Asqu=t(A)%*%A
+pdf("density_ATA.pdf")
+par(mfrow=c(2,2))
+plot(density(ATA[,1]))
+abline(v=Asqu[1,1],col=2)
+plot(density(ATA[,3]))
+abline(v=Asqu[1,2],col=2)
+plot(density(ATA[,2]))
+abline(v=Asqu[2,1],col=2)
+plot(density(ATA[,4]))
+abline(v=Asqu[2,2],col=2)
+dev.off()
+#B
+pdf("density_abs_B.pdf")
+par(mfrow=c(2,2))
+x=seq(mean(BB[,1])-1,mean(BB[,1])+1,length=10000)
+y=dnorm(x,mean=mean(abs(BB[,1])),sd=sd(abs(BB[,1])))
+plot(x,y,type="l",ylim=c(0,20),col="3")
+lines(density(abs(BB[,1])))
+abline(v=abs(B[1,1]),col=2)
+x=seq(mean(BB[,3])-1,mean(BB[,3])+1,length=10000)
+y=dnorm(x,mean=mean(abs(BB[,3])),sd=sd(abs(BB[,3])))
+plot(x,y,type="l",ylim=c(0,25),col="3")
+lines(density(abs(BB[,3])))
+abline(v=abs(B[1,2]),col=2)
+x=seq(mean(BB[,2])-1,mean(BB[,2])+1,length=10000)
+y=dnorm(x,mean=mean(abs(BB[,2])),sd=sd(abs(BB[,2])))
+plot(x,y,type="l",ylim=c(0,10),col="3")
+abline(v=abs(B[2,1]),col=2)
+lines(density(abs(BB[,2])))
+x=seq(mean(BB[,4])-1,mean(BB[,4])+1,length=10000)
+y=dnorm(x,mean=mean(abs(BB[,4])),sd=sd(abs(BB[,4])))
+plot(x,y,type="l",ylim=c(0,10),col="3")
+lines(density(abs(BB[,4])))
+abline(v=abs(B[2,2]),col=2)
+dev.off()
+pdf("density_B.pdf")
+par(mfrow=c(2,2))
+x=seq(mean(BB[,1])-2,mean(BB[,1])+2,length=10000)
+y=dnorm(x,mean=mean(BB[,1]),sd=sd(BB[,1]))
+plot(x,y,type="l",ylim=c(0,3),col="3")
+lines(density(BB[,1]))
+abline(v=B[1,1],col=2)
+x=seq(mean(BB[,3])-2,mean(BB[,3])+2,length=10000)
+y=dnorm(x,mean=mean(BB[,3]),sd=sd(BB[,3]))
+plot(x,y,type="l",ylim=c(0,18),col="3")
+lines(density(BB[,3]))
+abline(v=B[1,2],col=2)
+x=seq(mean(BB[,2])-2,mean(BB[,2])+2,length=10000)
+y=dnorm(x,mean=mean(BB[,2]),sd=sd(BB[,2]))
+plot(x,y,type="l",ylim=c(0,5),col="3")
+abline(v=B[2,1],col=2)
+lines(density(BB[,2]))
+x=seq(mean(BB[,4])-2,mean(BB[,4])+2,length=10000)
+y=dnorm(x,mean=mean(BB[,4]),sd=sd(BB[,4]))
+plot(x,y,type="l",ylim=c(0,3),col="3")
+lines(density(BB[,4]))
+abline(v=B[2,2],col=2)
+dev.off()
+##########
+Bsqu=t(B)%*%B
+pdf("density_BTB.pdf")
+par(mfrow=c(2,2))
+plot(density(BTB[,1]))
+abline(v=Bsqu[1,1],col=2)
+plot(density(BTB[,3]))
+abline(v=Bsqu[1,2],col=2)
+plot(density(BTB[,2]))
+abline(v=Bsqu[2,1],col=2)
+plot(density(BTB[,4]))
+abline(v=Bsqu[2,2],col=2)
+dev.off()
+library(shapes)
+distance=matrix(0,realT,repe)
+for (j in 1:repe)
+{
+for (i in 1: realT)
+{
+distance[i,j]=distcov(matrix(true_sigma[i,(4*j-3):(4*j)],2,2),matrix(sigma_hat[i,(4*j-3):(4*j)],2,2),method="Procrustes")
+}
+}
+distance
+head(distance)
+a=distance[,1]
+boxplot(a)
+qu=quantile(a,0.75)+(1.5*(quantile(a,0.75)-quantile(a,0.25)))
+a[a>qu]
+plot.ts(a)
+write.table(distance,"distance between true sigma and sigma hat.csv",sep=",",row.names = FALSE)
+distance=read.csv("distance between true sigma and sigma hat.csv")
+distance=as.matrix(distance)
+min=qu1=med=mea=qu3=max=sd=0
+for (j in 1:repe)
+{
+min[j]=min(distance[,j])
+qu1[j]=quantile(distance[,j],0.25,names=FALSE)
+med[j]=median(distance[,j])
+qu3[j]=quantile(distance[,j],0.75,names=FALSE)
+max[j]=max(distance[,j])
+sd[j]=sd(distance[,j])
+}
+pdf("summary_distance.pdf")
+input=data.frame(cbind(min,qu1,med,qu3,max,sd))
+boxplot(input,xlab="summary the distance of all dataset",ylab="distance",col=c(2:7))
+dev.off()
+#boxplot for summary distance for 3 ditaset
+input1=data.frame(cbind(distance[,1],distance[,2],distance[,3]))
+pdf("distance_plot_var_and_hatvar_for_3_dataset.pdf")
+par(mfrow=c(2,1))
+plot.ts(distance[,1],main="Distance",ylab="distance for covatiance",ylim = c(0,0.03),col=2)
+lines(x=c(1:realT),distance[,2],col=3)
+lines(x=c(1:realT),distance[,3],col=4)
+legend("topright", legend = c("data 1","data 2","data 3"),cex = 0.7,lty = 1, col = 2:4)
+abline(h=0,lty=2,lwd=2,col=9)
+boxplot(input1,xlab="difference between two conditional covariances",ylab="distance",col=c(2:4))
+dev.off()
+
+
+
+
+
+  
+
+  
+
+
+
+
+  
+
