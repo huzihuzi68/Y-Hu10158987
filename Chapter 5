@@ -662,7 +662,6 @@ copula_data <- lapply(1:(length(resid1) - window_size), function(i) {
 })
 
 #Step 4: Copula Parameter Estimation
-# 对每个窗口的 Copula 数据进行参数估计
 copula_params <- lapply(copula_data, function(data) {
   fitCopula(normalCopula(dim = 2), data = data, method = "ml")
 })
