@@ -2725,3 +2725,558 @@ abline(h=0,lty=2,lwd=2,col=9)
 boxplot(input1,xlab="difference between two conditional covariances",ylab="distance",col=c(2:4))
 dev.off()
 
+
+##BEKK(1,1) model with significant difference
+rm(list = ls())
+C=matrix(c(3.83,0,0,3.84,-0.02,0,3,-0.01,0.49), nrow = 3, ncol = 3)
+B=matrix(c(-0.09,-0.07,0.15,0.35,-0.34,-0.03,0.39,0.18,-0.4), 
+nrow = 3, ncol = 3)
+D=matrix(c(0.66,-0.18,-0.53,-0.18,0.82,-0.78,-0.23,0.15,-0.42), 
+nrow = 3, ncol = 3)
+K=kronecker(B, B)+kronecker(D, D)
+eigen(K)
+C1=diag(c(0.5,0.5,0.5))
+B1=diag(c(0.5,0.5,0.5))
+D1=diag(c(0.5,0.5,0.5))
+K1=kronecker(B1, B1)+kronecker(D1, D1)
+eigen(K1)
+
+#case:1. simulate first 1000 times
+N1=1000
+N2=300
+cut=500
+N=N1+N2-cut
+x=matrix(0,N1+N2,3)
+simu.sigma=matrix(0,(N1+N2)*3,3)
+
+sigma0=diag(c(1, 1, 1))
+sigma.diag1=diag(c(1, 1, 1))
+library(MASS)
+set.seed(1)
+eta0=mvrnorm(n = 1, mu=rep(0, 3),Sigma=sigma0)
+#eta0
+eigen(sigma0)
+sigma0_sqrt=diag(3)
+u0=eta0
+
+sigma1=t(C)%*%C+t(B)%*%u0%*%t(u0)%*%B+t(D)%*%sigma0%*%D
+simu.sigma[(1:3),]=sigma1
+res=eigen(sigma1)
+m1=res$vectors
+dd=diag(sqrt(res$values))
+m2=t(m1)
+sqrt.sigma1=m1%*%dd%*%m2
+#sqrt.sigma1%*%sqrt.sigma1
+set.seed(1)
+eta1=mvrnorm(n = 1, mu= rep(0, 3),Sigma=sigma.diag1)
+u1=sqrt.sigma1%*%eta1
+x[1,]=u1
+
+for (i in 2:N1) {
+sigma2=t(C)%*%C +t(B)%*%u1%*%t(u1)%*%B+t(D)%*%sigma1%*%D
+if(i==501) print(i)
+if(i==501) print(sigma2)
+if(i==750) print(i)
+if(i==750) print(sigma2)
+if(i==1000) print(i)
+if(i==1000) print(sigma2)
+res=eigen(sigma2)
+m1=res$vectors
+for (k in 1:3){
+if(res$values[k]<=0)  stop("eigenvalue non-positive")}
+dd=diag(sqrt(res$values))
+m2=t(m1)
+sqrt.sigma2=m1%*%dd%*%m2
+eta2=mvrnorm(n = 1, mu=rep(0, 3), Sigma=sigma.diag1)
+u2=sqrt.sigma2%*%eta2
+x[i,]=u2
+simu.sigma[((3*i-2):(3*i)),]=sigma2
+sigma1=sigma2
+u1=u2
+}
+
+#case2: simulate different model for 300 times 
+u00=x[1000,]
+sigma00=simu.sigma[(N1*3-2):(N1*3),]
+
+sigma11=t(C1)%*%C1+t(B1)%*%u00%*%t(u00)%*%B1+t(D1)%*%sigma00%*%D1
+n1=(N1+1)*3-2
+simu.sigma[n1:(n1+2),]=sigma11
+
+res=eigen(sigma11)
+m1=res$vectors
+dd=diag(sqrt(res$values))
+m2=t(m1)
+sqrt.sigma1=m1%*%dd%*%m2
+set.seed(1)
+eta1=mvrnorm(n = 1, mu= rep(0, 3),Sigma=sigma.diag1)
+u11=sqrt.sigma1%*%eta1
+x[(N1+1),]=u11
+
+for (i in 2:N2)
+{ 
+#print(i)
+sigma22=t(C1)%*%C1 +t(B1)%*%u11%*%t(u11)%*%B1+t(D1)%*%sigma11%*%D1
+if(i==101) print(i)
+if(i==101) print(sigma22)
+if(i==200) print(i)
+if(i==200) print(sigma22)
+if(i==300) print(i)
+if(i==300) print(sigma22)
+res=eigen(sigma22)
+m1=res$vectors
+for (k in 1:3){
+if(res$values[k]<=0)  stop("eigenvalue non-positive")}
+dd=diag(sqrt(res$values))
+m2=t(m1)
+sqrt.sigma2=m1%*%dd%*%m2
+eta2=mvrnorm(n = 1, mu=rep(0, 3), Sigma=sigma.diag1)
+u22=sqrt.sigma2%*%eta2
+x[(N1+i),]=u22
+n=(N1+i)*3-2
+simu.sigma[n:(n+2),]=sigma22
+sigma11=sigma22
+u11=u22
+}
+xx1<-x[(cut+1):(N1+N2),]   #xx1:800 time points u(residuals)
+plot.ts(xx1,main="")
+
+################################
+############CUSUM###############
+################################
+#assume constant mean
+#standerdised xx1
+m1=mean(xx1[,1])
+y1=xx1[,1]-m1
+mean(y1)
+m2=mean(xx1[,2])
+y2=xx1[,2]-m2
+mean(y2)
+m3=mean(xx1[,3])
+y3=xx1[,3]-m3
+mean(y3)
+ynew=cbind(y1,y2,y3)
+plot.ts(ynew,main="")
+
+#check variance
+var(ynew[(1:500),])
+var(ynew[(501:800),])
+
+library(matrixcalc)
+N=length(ynew[,1])
+ve=matrix(0,6,N)
+for (i in (1:N))
+{
+yi=matrix(ynew[i,],3,1)
+ve[,i]=vech(yi%*%t(yi))
+}
+ve=t(ve)
+sum1=cbind(sum(ve[,1]),sum(ve[,2]),sum(ve[,3]),sum(ve[,4]),
+sum(ve[,5]),sum(ve[,6]))
+sum1=matrix(sum1,6,1)
+
+S_k=function(k,ynew,a=sum1)
+{
+n=length(ynew[,1])
+d0=length(ynew[1,]) 
+d=d0*(d0+1)/2
+#sum2: sum of k:(yy_T) 
+vee=matrix(0,6,k)
+for (i in (1:k))
+{
+yi=matrix(ynew[i,],3,1)
+vee[,i]=vech(yi%*%t(yi))
+}
+vee=t(vee)
+sum2=cbind(sum(vee[,1]),sum(vee[,2]),sum(vee[,3]),sum(vee[,4]),
+sum(vee[,5]),sum(vee[,6]))
+sum2=matrix(sum2,6,1)
+sk=n^(-1/2)*{sum2-(k/n)*a}
+return(sk)
+}
+
+#for different k, we have all sk
+skmatrix=matrix(0,6,N)
+for (i in (1:N))
+{
+skmatrix[,i]=S_k(i,ynew,a=sum1)
+}
+s.k=t(skmatrix)
+eigen(s.k)
+
+par(mfrow=c(3,3))
+plot.ts(s.k[,1])
+which.max(s.k[,1])
+plot.ts(s.k[,2])
+which.max(s.k[,2])
+plot.ts(s.k[,3])
+which.max(s.k[,3])
+plot.ts(s.k[,2])
+plot.ts(s.k[,4])
+which.max(s.k[,4])
+plot.ts(s.k[,5])
+plot.ts(s.k[,3])
+plot.ts(s.k[,5])
+which.max(s.k[,5])
+plot.ts(s.k[,6])
+which.max(s.k[,6])
+
+vechy=matrix(0,6,N)
+for (i in (1:N))
+{
+yi=matrix(ynew[i,],3,1) 
+vechy[,i]=vech(yi%*%t(yi)) 
+}
+vechy=t(vechy)
+cov(vechy)
+library(cointReg)
+cov=getLongRunVar(vechy, kernel = "ba", bandwidth = log10(N))$Omega
+cov
+
+Lambda=0
+for (i in (1:N))
+{
+ski=matrix(skmatrix[,i],6,1)
+Lambda[i]=t(ski)%*%solve(cov)%*%ski
+}
+Lambda
+par(mfrow=c(1,1))
+plot.ts(Lambda)
+which.max(Lambda)
+mean(Lambda) 
+
+###BEKK(1,1) model with in-significant difference
+rm(list = ls())
+C=matrix(c(3.83,0,0,3.84,-0.02,0,3,-0.01,0.49), nrow = 3, ncol = 3)
+C
+B=matrix(c(-0.09,-0.07,0.15,0.35,-0.34,-0.03,0.39,0.18,-0.4), 
+nrow = 3, ncol = 3)
+B
+D=matrix(c(0.66,-0.18,-0.53,-0.18,0.82,-0.78,-0.23,0.15,-0.42), 
+nrow = 3, ncol = 3)
+D
+K=kronecker(B, B)+kronecker(D, D)
+eigen(K)
+
+C1=matrix(c(3.68,0,0,3.93,0,0,3.18,0.14,1.57), nrow = 3, ncol = 3)
+C1
+B1=matrix(c(0.02,0.21,-0.29,-0.48,0.53,-0.11,-0.5,-0.09,0.3), 
+nrow = 3, ncol = 3)
+B1
+D1=matrix(c(-0.73,0.24,0.42,0.11,-0.74,0.68,0,-0.27,0.09), 
+nrow = 3, ncol = 3)
+D1
+K1=kronecker(B1, B1)+kronecker(D1,D1)
+eigen(K1)
+
+###############simulate BEKK(1,1) no chaning point
+rm(list = ls())
+C=matrix(c(3.83,0,0,3.84,-0.02,0,3,-0.01,0.49), nrow = 3, ncol = 3)
+C
+B=matrix(c(-0.09,-0.07,0.15,0.35,-0.34,-0.03,0.39,0.18,-0.4), nrow = 3, ncol = 3)
+B
+D=matrix(c(0.66,-0.18,-0.53,-0.18,0.82,-0.78,-0.23,0.15,-0.42), nrow = 3, ncol = 3)
+D
+K1=kronecker(B, B)
+K2=kronecker(D, D)
+K=K1+K2
+eigen(K)
+
+N=1000
+x=matrix(0,N,3)
+head(x)
+sigma.diag1=diag(c(1, 1, 1))
+
+sigma0=diag(c(1, 1, 1))
+library(MASS)
+set.seed(1)
+eta0=mvrnorm(n = 1, mu=rep(0, 3),Sigma=sigma0)
+#eta0
+eigen(sigma0)
+sigma0_sqrt=diag(3)
+u0=eta0
+
+sigma1=t(C)%*%C+t(B)%*%u0%*%t(u0)%*%B+t(D)%*%sigma0%*%D
+res=eigen(sigma1)
+m1=res$vectors
+dd=diag(sqrt(res$values))
+m2=t(m1)
+sqrt.sigma1=m1%*%dd%*%m2
+#sqrt.sigma1%*%sqrt.sigma1
+set.seed(1)
+eta1=mvrnorm(n = 1, mu= rep(0, 3),Sigma=sigma.diag1)
+u1=sqrt.sigma1%*%eta1
+x[1,]=u1
+
+for (i in 2:N) {
+#print(i)
+sigma2=t(C)%*%C +t(B)%*%u1%*%t(u1)%*%B+t(D)%*%sigma1%*%D
+if(i==303) print(i)
+if(i==303) print(sigma2)
+if(i==502) print(i)
+if(i==502) print(sigma2)
+if(i==902) print(i)
+if(i==902) print(sigma2)
+#if(i==1001) print(i)
+#if(i==1001) print(sigma2)
+#if(i==1500) print(i)
+#if(i==1500) print(sigma2)
+#if(i==2000) print(i)
+#if(i==2000) print(sigma2)
+res=eigen(sigma2)
+m1=res$vectors
+for (k in 1:3){
+if(res$values[k]<=0)  stop("eigenvalue non-positive")}
+dd=diag(sqrt(res$values))
+m2=t(m1)
+sqrt.sigma2=m1%*%dd%*%m2
+eta2=mvrnorm(n = 1, mu=rep(0, 3), Sigma=sigma.diag1)
+u2=sqrt.sigma2%*%eta2
+x[i,]=u2
+sigma1=sigma2
+u1=u2
+}
+xx1<-x[201:1000,]
+head(xx1)
+plot.ts(xx1,main="")
+
+##############################
+#####for VAR(1)model##########
+##############################
+rm(list = ls())
+#VAR(1) with chang point at time 500 large differnet
+library(tsDyn)
+N1=500
+N2=300
+B1=matrix(c(0.3,0.27,-0.46,0.25,-0.1,-0.12,0.64,0.02,0.05),3)
+set.seed(1)
+var1 <- VAR.sim(B=B1, n=N1, lag = 1,include="none")
+B2<-diag(c(0.9,0.9,0.9))
+set.seed(1)
+var2 <- VAR.sim(B=B2, n=N2,lag = 1, include="none")
+xx1=matrix(0,(N1+N2),3)
+xx1[(1:N1),]=var1
+xx1[(N1+1):(N1+N2),]=var2
+plot.ts(xx1,main="")
+
+#little differnet breakpoint of VAR(1)
+rm(list = ls())
+library(tsDyn)
+N1=500
+N2=300
+B1=matrix(c(0.3,0.27,-0.46,0.25,-0.1,-0.12,0.64,0.02,0.05),3)
+set.seed(1)
+var1 <- VAR.sim(B=B1, n=N1, lag = 1,include="none")
+B2<-matrix(c(0.16,-0.24,0.29,-0.27,0.37,0.05,-0.18,-0.2,0.37), 3)
+set.seed(1)
+var2 <- VAR.sim(B=B2, n=N2,lag = 1, include="none")
+
+xx1=matrix(0,(N1+N2),3)
+xx1[(1:N1),]=var1
+xx1[(N1+1):(N1+N2),]=var2
+plot.ts(xx1,main="")
+
+#no chaning point VAR(1)
+rm(list = ls())
+library(tsDyn)
+N=800
+B<-matrix(c(0.3,0.27,-0.46,0.25,-0.1,-0.12,0.64,0.02,0.05),3)
+set.seed(1)
+xx1<- VAR.sim(B=B, n=N,lag = 1, include="none")
+plot.ts(xx1,main="")
+\end{verbatim}
+\subsection[Chapter 4]{Chapter 4}
+\begin{verbatim}
+#####Chapter 4-1
+m1=mean(xx1[,1])
+y1=xx1[,1]-m1
+mean(y1)
+m2=mean(xx1[,2])
+y2=xx1[,2]-m2
+mean(y2)
+m3=mean(xx1[,3])
+y3=xx1[,3]-m3
+mean(y3)
+ynew=cbind(y1,y2,y3)
+plot.ts(ynew,main="")
+
+##########################################################################
+#distance:refer-mean var of 800 observation & window of 50 observarions###
+##########################################################################
+library(matrixcalc)
+N=length(ynew[,1])
+ve=matrix(0,6,N)
+for (i in (1:N))   #ve=vech(yy^T)
+{
+yi=matrix(ynew[i,],3,1)
+ve[,i]=vech(yi%*%t(yi))
+}
+ve=t(ve)
+m <-apply(ve, 2, mean)   #mean of vech(yy^T)
+mmatrix=matrix(c(m[1],m[2],m[3],m[2],m[4],m[5],m[3],m[5],m[6]),3,3) 
+
+#window without step
+runvar<-function(y,window)
+{
+n=length(y[,1])
+index=1
+temp=y[1:window,]
+lim=n-window+1
+rvar=matrix(0,3*lim,3) 
+rvar[1:3,]=var(temp)
+for(index in 2 : lim)
+{
+temp=y[index:(window+index-1),]
+rvar[{index*3-2}:{index*3},]=var(temp)
+}
+rvar
+}
+wind=50
+var_windows=runvar(ynew, wind)
+
+#####distance plot(window without step)
+library(shapes)
+n=length(ynew[,1])
+lim=n-wind+1
+x=0
+for (i in 1:lim )
+x[i]=distcov(mmatrix,matrix(var_windows[{i*3-2}:{i*3},],3,3), 
+method="Procrustes")
+x2=0
+for (i in 1:lim )
+x2[i]=distcov(mmatrix,matrix(var_windows[{i*3-2}:{i*3},],3,3),
+ method="Cholesky")
+plot.ts(x,main="Distance",ylab="distance for covatiance",
+ylim = c(0,6),col=1)
+lines(x=c(1:lim),x2,col=2) 
+legend("bottomleft", legend = c("Procrustes","Cholesky"), 
+lty = 1, col = 1:2)
+N1=500
+N2=300
+abline(v=N1+1,lty=2,lwd=2,col=3) 
+
+RB25=lowess(x,f = 0.25, iter = 2, delta = 0.01 * diff(range(x)))
+RB50=lowess(x,f = 0.5, iter = 2, delta = 0.01 * diff(range(x)))
+RB75=lowess(x,f = 0.75, iter = 2, delta = 0.01 * diff(range(x)))
+lines(seq(1,length(x)),RB25$y,type='l',col=4)
+lines(seq(1,length(x)),RB50$y,type='l',col=5)
+lines(seq(1,length(x)),RB75$y,type='l',col=6)
+legend("bottomright", legend = c("span=0.25","span=0.50","span=0.75"),
+ lty = 1, col = 4:6)
+
+###Chapter4-2(PCA)
+m1=mean(xx1[,1])
+y1=xx1[,1]-m1
+mean(y1)
+m2=mean(xx1[,2])
+y2=xx1[,2]-m2
+mean(y2)
+m3=mean(xx1[,3])
+y3=xx1[,3]-m3
+mean(y3)
+ynew=cbind(y1,y2,y3)
+plot.ts(ynew)
+
+eigenvec=eigen(cov(ynew))
+A=eigenvec$vectors
+Y=ynew%*%A
+head(Y)
+
+cov(ynew)
+eigen(cov(ynew))
+pca1=prcomp(ynew,scale=TRUE )
+summary(pca1)
+
+library(RSNNS)
+col_mean = colMeans(ynew)
+cols = ncol(ynew) 
+col_sd = apply(ynew,2,sd)
+for (i in 1:cols)
+{
+ynew[,i] =ynew[,i] - col_mean[i]
+ynew[,i] =ynew[,i]/col_sd[i]
+}
+cov(ynew)
+eigen(cov(ynew))
+pca=princomp(ynew)
+summary(pca)
+
+#choose the first 2 components
+eigenmatrix=eigen(cov(ynew))$vectors
+score=matrix(0,800,2)
+score[,1]=ynew%*%eigenmatrix[,1]
+score[,2]=ynew%*%eigenmatrix[,2]
+
+
+plot.ts(score)
+
+x1=score
+mm1=mean(x1[,1])
+yy1=x1[,1]-mm1
+mean(yy1)
+mm2=mean(x1[,2])
+yy2=x1[,2]-mm2
+mean(yy2)
+ynew=cbind(y1,y2)
+plot.ts(ynew)
+
+library(matrixcalc)
+N=length(ynew[,1])
+ve=matrix(0,3,N)
+for (i in (1:N))   #ve=vech(yy^T)
+{
+yi=matrix(ynew[i,],2,1)
+ve[,i]=vech(yi%*%t(yi))
+}
+ve=t(ve)
+m <-apply(ve, 2, mean)   #mean of vech(yy^T)
+mmatrix=matrix(c(m[1],m[2],m[2],m[3]),2,2)
+
+#window without step
+runvar<-function(y,window)
+{
+n=length(y[,1])
+index=1
+temp=y[1:window,]
+lim=n-window+1
+rvar=matrix(0,2*lim,2) 
+rvar[1:2,]=var(temp)
+for(index in 2 : lim)
+{
+temp=y[index:(window+index-1),]
+rvar[{index*2-1}:{index*2},]=var(temp)
+}
+rvar
+}
+wind=50
+var_windows=runvar(ynew, wind)
+
+library(shapes)
+N=length(ynew[,1])
+lim=N-wind+1
+x=0
+for (i in 1:lim )
+x[i]=distcov(mmatrix,matrix(var_windows[{i*2-1}:{i*2},],2,2),
+ method="Procrustes")
+x2=0
+for (i in 1:lim )
+x2[i]=distcov(mmatrix,matrix(var_windows[{i*2-1}:{i*2},],2,2),
+ method="Cholesky")
+plot.ts(x,main="Distance",ylab="distance for covatiance",
+ylim = c(0,6),col=1)
+lines(x=c(1:lim), x2,col=2) 
+legend("bottomleft", legend = c("Procrustes","Cholesky"),
+ lty = 1, col = 1:2)
+N1=500
+abline(v=N1+1,lty=2,lwd=2,col=3) 
+
+RB25=lowess(x,f = 0.25, iter = 2, delta = 0.01 * diff(range(x)))
+RB50=lowess(x,f = 0.5, iter = 2, delta = 0.01 * diff(range(x)))
+RB75=lowess(x,f = 0.75, iter = 2, delta = 0.01 * diff(range(x)))
+lines(seq(1,length(x)),RB25$y,type='l',col=4)
+lines(seq(1,length(x)),RB50$y,type='l',col=5)
+lines(seq(1,length(x)),RB75$y,type='l',col=6)
+legend("bottomright", legend = c("span=0.25","span=0.50","span=0.75"),
+ lty = 1, col = 4:6)
+
+
