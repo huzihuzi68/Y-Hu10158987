@@ -1,4 +1,8 @@
-#Chapter 4
+#######################################
+###############Chapter 4###############
+#######################################
+
+#simulation
 rm(list=ls())
 library(VGAMextra)
 library(MASS)
@@ -49,7 +53,7 @@ sim.copula.tGARCH <- function(burnin,time,rho1,
   dat=matrix(0,nrow = totaltime, ncol = 2)   #simulate data based on Copula
   for (i in (1:totaltime)) 
   {
-    dat[i,1] <- qt.scaled(U[i,1],nu)   ####应该q
+    dat[i,1] <- qt.scaled(U[i,1],nu)  
     dat[i,2] <- qt.scaled(U[i,2],nu)
   }
   
@@ -93,8 +97,6 @@ plot.ts(sim.copulagarch,main="rho=0.2")
 sim.copulagarch=sim[[3]]   #copula-garch data
 sim.data1=sim.copulagarch[,1]
 sim.data2=sim.copulagarch[,2]
-
-
 
 cor(sim.copulagarch)
 
@@ -302,6 +304,13 @@ op$par
 
 
 
+
+
+
+
+#############################################
+###########application to oil data###########
+#############################################
 data=read.csv(file="oil.csv")
 oil=data.frame(data)
 head(oil)
@@ -494,15 +503,6 @@ gofCvM("t",df = 4, dat_arma)
 
 u <- pobs(dat_arma)
 
-
-
-## A three-dimensional example  ------------------------------------
-t.copula <- tCopula(dim = 2, dispstr = "un", df.fixed = TRUE)
-x <- rCopula(n, tCopula(0.92, dim = 2, dispstr = "un"))
-gofCopula(t.copula, dat_arma, N=n, simulation="mult")
-
-if(FALSE) # no yet possible
-  gofCopula(t.copula, x, N=N, simulation="mult", estim.method="itau")
 
 
 
